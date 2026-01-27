@@ -203,23 +203,137 @@ debug.get('/logs', async (c) => {
   }
 });
 
-// GET /debug/ws-test - Test WebSocket connection to the gateway
+// GET /debug/ws-test - Interactive WebSocket debug page
 debug.get('/ws-test', async (c) => {
-  const sandbox = c.get('sandbox');
-  const CLAWDBOT_PORT = 18789;
+  const host = c.req.header('host') || 'localhost';
+  const protocol = c.req.header('x-forwarded-proto') || 'https';
+  const wsProtocol = protocol === 'https' ? 'wss' : 'ws';
   
-  // Create a test WebSocket request
-  const wsUrl = `ws://localhost:${CLAWDBOT_PORT}/`;
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+  <title>WebSocket Debug</title>
+  <style>
+    body { font-family: monospace; padding: 20px; background: #1a1a1a; color: #0f0; }
+    #log { white-space: pre-wrap; background: #000; padding: 10px; height: 400px; overflow-y: auto; border: 1px solid #333; }
+    button { margin: 5px; padding: 10px; }
+    input { padding: 10px; width: 300px; }
+    .error { color: #f00; }
+    .sent { color: #0ff; }
+    .received { color: #0f0; }
+    .info { color: #ff0; }
+  </style>
+</head>
+<body>
+  <h1>WebSocket Debug Tool</h1>
+  <div>
+    <button id="connect">Connect</button>
+    <button id="disconnect" disabled>Disconnect</button>
+    <button id="clear">Clear Log</button>
+  </div>
+  <div style="margin: 10px 0;">
+    <input id="message" placeholder="JSON message to send..." />
+    <button id="send" disabled>Send</button>
+  </div>
+  <div style="margin: 10px 0;">
+    <button id="sendConnect" disabled>Send Connect Frame</button>
+  </div>
+  <div id="log"></div>
   
-  return c.json({
-    message: 'WebSocket test endpoint',
-    wsUrl,
-    hint: 'Use browser devtools to connect to /chat and inspect WebSocket frames',
-    debug_info: {
-      sandbox_id: 'clawdbot',
-      port: CLAWDBOT_PORT,
-    }
-  });
+  <script>
+    const wsUrl = '${wsProtocol}://${host}/';
+    let ws = null;
+    
+    const log = (msg, className = '') => {
+      const logEl = document.getElementById('log');
+      const time = new Date().toISOString().substr(11, 12);
+      logEl.innerHTML += '<span class="' + className + '">[' + time + '] ' + msg + '</span>\\n';
+      logEl.scrollTop = logEl.scrollHeight;
+    };
+    
+    document.getElementById('connect').onclick = () => {
+      log('Connecting to ' + wsUrl + '...', 'info');
+      ws = new WebSocket(wsUrl);
+      
+      ws.onopen = () => {
+        log('Connected!', 'info');
+        document.getElementById('connect').disabled = true;
+        document.getElementById('disconnect').disabled = false;
+        document.getElementById('send').disabled = false;
+        document.getElementById('sendConnect').disabled = false;
+      };
+      
+      ws.onmessage = (e) => {
+        log('RECV: ' + e.data, 'received');
+        try {
+          const parsed = JSON.parse(e.data);
+          log('  Parsed: ' + JSON.stringify(parsed, null, 2), 'received');
+        } catch {}
+      };
+      
+      ws.onerror = (e) => {
+        log('ERROR: ' + JSON.stringify(e), 'error');
+      };
+      
+      ws.onclose = (e) => {
+        log('Closed: code=' + e.code + ' reason=' + e.reason, 'info');
+        document.getElementById('connect').disabled = false;
+        document.getElementById('disconnect').disabled = true;
+        document.getElementById('send').disabled = true;
+        document.getElementById('sendConnect').disabled = true;
+        ws = null;
+      };
+    };
+    
+    document.getElementById('disconnect').onclick = () => {
+      if (ws) ws.close();
+    };
+    
+    document.getElementById('clear').onclick = () => {
+      document.getElementById('log').innerHTML = '';
+    };
+    
+    document.getElementById('send').onclick = () => {
+      const msg = document.getElementById('message').value;
+      if (ws && msg) {
+        log('SEND: ' + msg, 'sent');
+        ws.send(msg);
+      }
+    };
+    
+    document.getElementById('sendConnect').onclick = () => {
+      if (!ws) return;
+      const connectFrame = {
+        type: 'req',
+        id: 'debug-' + Date.now(),
+        method: 'connect',
+        params: {
+          minProtocol: 1,
+          maxProtocol: 1,
+          client: {
+            id: 'debug-tool',
+            displayName: 'Debug Tool',
+            version: '1.0.0',
+            mode: 'webchat',
+            platform: 'web'
+          },
+          role: 'operator',
+          scopes: []
+        }
+      };
+      const msg = JSON.stringify(connectFrame);
+      log('SEND Connect Frame: ' + msg, 'sent');
+      ws.send(msg);
+    };
+    
+    document.getElementById('message').onkeypress = (e) => {
+      if (e.key === 'Enter') document.getElementById('send').click();
+    };
+  </script>
+</body>
+</html>`;
+  
+  return c.html(html);
 });
 
 // GET /debug/env - Show environment configuration (sanitized)
