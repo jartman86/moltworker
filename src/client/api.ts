@@ -3,58 +3,6 @@
 
 const API_BASE = '/api/admin';
 
-export interface PendingDevice {
-  requestId: string;
-  deviceId: string;
-  displayName?: string;
-  platform?: string;
-  clientId?: string;
-  clientMode?: string;
-  role?: string;
-  roles?: string[];
-  scopes?: string[];
-  remoteIp?: string;
-  ts: number;
-}
-
-export interface PairedDevice {
-  deviceId: string;
-  displayName?: string;
-  platform?: string;
-  clientId?: string;
-  clientMode?: string;
-  role?: string;
-  roles?: string[];
-  scopes?: string[];
-  createdAtMs: number;
-  approvedAtMs: number;
-}
-
-export interface DeviceListResponse {
-  pending: PendingDevice[];
-  paired: PairedDevice[];
-  raw?: string;
-  stderr?: string;
-  parseError?: string;
-  error?: string;
-}
-
-export interface ApproveResponse {
-  success: boolean;
-  requestId: string;
-  message?: string;
-  stdout?: string;
-  stderr?: string;
-  error?: string;
-}
-
-export interface ApproveAllResponse {
-  approved: string[];
-  failed: Array<{ requestId: string; success: boolean; error?: string }>;
-  message?: string;
-  error?: string;
-}
-
 export class AuthError extends Error {
   constructor(message: string) {
     super(message);
@@ -85,55 +33,136 @@ async function apiRequest<T>(path: string, options: globalThis.RequestInit = {})
   return data;
 }
 
-export async function listDevices(): Promise<DeviceListResponse> {
-  return apiRequest<DeviceListResponse>('/devices');
+// Status
+export interface BotStatus {
+  ok: boolean;
+  bot: { id: number; first_name: string; username?: string } | null;
+  webhook: {
+    url: string;
+    pending_update_count: number;
+    last_error_date?: number;
+    last_error_message?: string;
+  } | null;
+  conversationCount: number;
+  model: string;
+  maxTokens: number;
+  allowedUsers: number[];
+  hasApiKey: boolean;
+  hasBotToken: boolean;
 }
 
-export async function approveDevice(requestId: string): Promise<ApproveResponse> {
-  return apiRequest<ApproveResponse>(`/devices/${requestId}/approve`, {
+export function getStatus(): Promise<BotStatus> {
+  return apiRequest<BotStatus>('/status');
+}
+
+// Soul
+export function getSoul(): Promise<{ content: string }> {
+  return apiRequest<{ content: string }>('/soul');
+}
+
+export function updateSoul(content: string): Promise<{ ok: boolean }> {
+  return apiRequest<{ ok: boolean }>('/soul', {
+    method: 'PUT',
+    body: JSON.stringify({ content }),
+  });
+}
+
+// Allowlist
+export function getAllowlist(): Promise<{ userIds: number[] }> {
+  return apiRequest<{ userIds: number[] }>('/allowlist');
+}
+
+export function updateAllowlist(userIds: number[]): Promise<{ ok: boolean }> {
+  return apiRequest<{ ok: boolean }>('/allowlist', {
+    method: 'PUT',
+    body: JSON.stringify({ userIds }),
+  });
+}
+
+// Conversations
+export interface ConversationSummary {
+  chatId: number;
+  messageCount: number;
+  updatedAt: number;
+}
+
+export interface ConversationMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: number;
+}
+
+export interface ConversationDetail {
+  chatId: number;
+  messages: ConversationMessage[];
+  updatedAt: number;
+}
+
+export function getConversations(): Promise<{ conversations: ConversationSummary[] }> {
+  return apiRequest<{ conversations: ConversationSummary[] }>('/conversations');
+}
+
+export function getConversation(chatId: number): Promise<ConversationDetail> {
+  return apiRequest<ConversationDetail>(`/conversations/${chatId}`);
+}
+
+export function deleteConversation(chatId: number): Promise<{ ok: boolean }> {
+  return apiRequest<{ ok: boolean }>(`/conversations/${chatId}`, { method: 'DELETE' });
+}
+
+// Webhook
+export function registerWebhook(): Promise<{ ok: boolean; description: string; webhookUrl: string }> {
+  return apiRequest<{ ok: boolean; description: string; webhookUrl: string }>('/webhook/register', {
     method: 'POST',
   });
 }
 
-export async function approveAllDevices(): Promise<ApproveAllResponse> {
-  return apiRequest<ApproveAllResponse>('/devices/approve-all', {
+export function unregisterWebhook(): Promise<{ ok: boolean; description: string }> {
+  return apiRequest<{ ok: boolean; description: string }>('/webhook/unregister', {
     method: 'POST',
   });
 }
 
-export interface RestartGatewayResponse {
-  success: boolean;
-  message?: string;
-  error?: string;
+// Config
+export interface BotConfig {
+  model: string;
+  maxTokens: number;
 }
 
-export async function restartGateway(): Promise<RestartGatewayResponse> {
-  return apiRequest<RestartGatewayResponse>('/gateway/restart', {
-    method: 'POST',
+export function getConfig(): Promise<BotConfig> {
+  return apiRequest<BotConfig>('/config');
+}
+
+export function updateConfig(config: Partial<BotConfig>): Promise<{ ok: boolean; config: BotConfig }> {
+  return apiRequest<{ ok: boolean; config: BotConfig }>('/config', {
+    method: 'PUT',
+    body: JSON.stringify(config),
   });
 }
 
-export interface StorageStatusResponse {
-  configured: boolean;
-  missing?: string[];
-  lastSync: string | null;
-  message: string;
+// Skills
+export interface SkillMeta {
+  name: string;
+  description: string;
 }
 
-export async function getStorageStatus(): Promise<StorageStatusResponse> {
-  return apiRequest<StorageStatusResponse>('/storage');
+export function getSkills(): Promise<{ skills: SkillMeta[] }> {
+  return apiRequest<{ skills: SkillMeta[] }>('/skills');
 }
 
-export interface SyncResponse {
-  success: boolean;
-  message?: string;
-  lastSync?: string;
-  error?: string;
-  details?: string;
+export function getSkill(name: string): Promise<{ name: string; content: string }> {
+  return apiRequest<{ name: string; content: string }>(`/skills/${encodeURIComponent(name)}`);
 }
 
-export async function triggerSync(): Promise<SyncResponse> {
-  return apiRequest<SyncResponse>('/storage/sync', {
-    method: 'POST',
+export function updateSkill(name: string, content: string): Promise<{ ok: boolean }> {
+  return apiRequest<{ ok: boolean }>(`/skills/${encodeURIComponent(name)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ content }),
+  });
+}
+
+export function deleteSkill(name: string): Promise<{ ok: boolean }> {
+  return apiRequest<{ ok: boolean }>(`/skills/${encodeURIComponent(name)}`, {
+    method: 'DELETE',
   });
 }

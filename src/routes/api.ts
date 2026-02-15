@@ -1,298 +1,207 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
 import { createAccessMiddleware } from '../auth';
+import { DEFAULT_MODEL, DEFAULT_MAX_TOKENS, R2_KEYS, type BotConfig } from '../config';
+import { TelegramClient } from '../telegram';
 import {
-  ensureMoltbotGateway,
-  findExistingMoltbotProcess,
-  syncToR2,
-  waitForProcess,
-} from '../gateway';
-
-// CLI commands can take 10-15 seconds to complete due to WebSocket connection overhead
-const CLI_TIMEOUT_MS = 20000;
+  loadSoul,
+  saveSoul,
+  loadAllowlist,
+  saveAllowlist,
+  listConversations,
+  loadConversation,
+  deleteConversation,
+  listSkills,
+  loadSkill,
+  saveSkill,
+  deleteSkill,
+} from '../r2';
 
 /**
- * API routes
- * - /api/admin/* - Protected admin API routes (Cloudflare Access required)
- *
- * Note: /api/status is now handled by publicRoutes (no auth required)
+ * API routes - all protected by Cloudflare Access
  */
 const api = new Hono<AppEnv>();
 
-/**
- * Admin API routes - all protected by Cloudflare Access
- */
 const adminApi = new Hono<AppEnv>();
 
 // Middleware: Verify Cloudflare Access JWT for all admin routes
 adminApi.use('*', createAccessMiddleware({ type: 'json' }));
 
-// GET /api/admin/devices - List pending and paired devices
-adminApi.get('/devices', async (c) => {
-  const sandbox = c.get('sandbox');
+// GET /api/admin/status - Bot status overview
+adminApi.get('/status', async (c) => {
+  const env = c.env;
+  const bucket = env.MOLTBOT_BUCKET;
 
-  try {
-    // Ensure moltbot is running first
-    await ensureMoltbotGateway(sandbox, c.env);
-
-    // Run OpenClaw CLI to list devices
-    // Must specify --url and --token (OpenClaw v2026.2.3 requires explicit credentials with --url)
-    const token = c.env.MOLTBOT_GATEWAY_TOKEN;
-    const tokenArg = token ? ` --token ${token}` : '';
-    const proc = await sandbox.startProcess(
-      `openclaw devices list --json --url ws://localhost:18789${tokenArg}`,
-    );
-    await waitForProcess(proc, CLI_TIMEOUT_MS);
-
-    const logs = await proc.getLogs();
-    const stdout = logs.stdout || '';
-    const stderr = logs.stderr || '';
-
-    // Try to parse JSON output
+  let webhookInfo = null;
+  let botInfo = null;
+  if (env.TELEGRAM_BOT_TOKEN) {
+    const telegram = new TelegramClient(env.TELEGRAM_BOT_TOKEN);
     try {
-      // Find JSON in output (may have other log lines)
-      const jsonMatch = stdout.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const data = JSON.parse(jsonMatch[0]);
-        return c.json(data);
-      }
-
-      // If no JSON found, return raw output for debugging
-      return c.json({
-        pending: [],
-        paired: [],
-        raw: stdout,
-        stderr,
-      });
-    } catch {
-      return c.json({
-        pending: [],
-        paired: [],
-        raw: stdout,
-        stderr,
-        parseError: 'Failed to parse CLI output',
-      });
-    }
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return c.json({ error: errorMessage }, 500);
-  }
-});
-
-// POST /api/admin/devices/:requestId/approve - Approve a pending device
-adminApi.post('/devices/:requestId/approve', async (c) => {
-  const sandbox = c.get('sandbox');
-  const requestId = c.req.param('requestId');
-
-  if (!requestId) {
-    return c.json({ error: 'requestId is required' }, 400);
-  }
-
-  try {
-    // Ensure moltbot is running first
-    await ensureMoltbotGateway(sandbox, c.env);
-
-    // Run OpenClaw CLI to approve the device
-    const token = c.env.MOLTBOT_GATEWAY_TOKEN;
-    const tokenArg = token ? ` --token ${token}` : '';
-    const proc = await sandbox.startProcess(
-      `openclaw devices approve ${requestId} --url ws://localhost:18789${tokenArg}`,
-    );
-    await waitForProcess(proc, CLI_TIMEOUT_MS);
-
-    const logs = await proc.getLogs();
-    const stdout = logs.stdout || '';
-    const stderr = logs.stderr || '';
-
-    // Check for success indicators (case-insensitive, CLI outputs "Approved ...")
-    const success = stdout.toLowerCase().includes('approved') || proc.exitCode === 0;
-
-    return c.json({
-      success,
-      requestId,
-      message: success ? 'Device approved' : 'Approval may have failed',
-      stdout,
-      stderr,
-    });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return c.json({ error: errorMessage }, 500);
-  }
-});
-
-// POST /api/admin/devices/approve-all - Approve all pending devices
-adminApi.post('/devices/approve-all', async (c) => {
-  const sandbox = c.get('sandbox');
-
-  try {
-    // Ensure moltbot is running first
-    await ensureMoltbotGateway(sandbox, c.env);
-
-    // First, get the list of pending devices
-    const token = c.env.MOLTBOT_GATEWAY_TOKEN;
-    const tokenArg = token ? ` --token ${token}` : '';
-    const listProc = await sandbox.startProcess(
-      `openclaw devices list --json --url ws://localhost:18789${tokenArg}`,
-    );
-    await waitForProcess(listProc, CLI_TIMEOUT_MS);
-
-    const listLogs = await listProc.getLogs();
-    const stdout = listLogs.stdout || '';
-
-    // Parse pending devices
-    let pending: Array<{ requestId: string }> = [];
+      const wh = await telegram.getWebhookInfo();
+      webhookInfo = wh.result;
+    } catch { /* ignore */ }
     try {
-      const jsonMatch = stdout.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const data = JSON.parse(jsonMatch[0]);
-        pending = data.pending || [];
-      }
-    } catch {
-      return c.json({ error: 'Failed to parse device list', raw: stdout }, 500);
-    }
-
-    if (pending.length === 0) {
-      return c.json({ approved: [], message: 'No pending devices to approve' });
-    }
-
-    // Approve each pending device
-    const results: Array<{ requestId: string; success: boolean; error?: string }> = [];
-
-    for (const device of pending) {
-      try {
-        // eslint-disable-next-line no-await-in-loop -- sequential device approval required
-        const approveProc = await sandbox.startProcess(
-          `openclaw devices approve ${device.requestId} --url ws://localhost:18789${tokenArg}`,
-        );
-        // eslint-disable-next-line no-await-in-loop
-        await waitForProcess(approveProc, CLI_TIMEOUT_MS);
-
-        // eslint-disable-next-line no-await-in-loop
-        const approveLogs = await approveProc.getLogs();
-        const success =
-          approveLogs.stdout?.toLowerCase().includes('approved') || approveProc.exitCode === 0;
-
-        results.push({ requestId: device.requestId, success });
-      } catch (err) {
-        results.push({
-          requestId: device.requestId,
-          success: false,
-          error: err instanceof Error ? err.message : 'Unknown error',
-        });
-      }
-    }
-
-    const approvedCount = results.filter((r) => r.success).length;
-    return c.json({
-      approved: results.filter((r) => r.success).map((r) => r.requestId),
-      failed: results.filter((r) => !r.success),
-      message: `Approved ${approvedCount} of ${pending.length} device(s)`,
-    });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return c.json({ error: errorMessage }, 500);
+      const me = await telegram.getMe();
+      botInfo = me.result;
+    } catch { /* ignore */ }
   }
-});
 
-// GET /api/admin/storage - Get R2 storage status and last sync time
-adminApi.get('/storage', async (c) => {
-  const sandbox = c.get('sandbox');
-  const hasCredentials = !!(
-    c.env.R2_ACCESS_KEY_ID &&
-    c.env.R2_SECRET_ACCESS_KEY &&
-    c.env.CF_ACCOUNT_ID
-  );
+  const conversations = await listConversations(bucket);
+  const allowlist = await loadAllowlist(bucket);
 
-  const missing: string[] = [];
-  if (!c.env.R2_ACCESS_KEY_ID) missing.push('R2_ACCESS_KEY_ID');
-  if (!c.env.R2_SECRET_ACCESS_KEY) missing.push('R2_SECRET_ACCESS_KEY');
-  if (!c.env.CF_ACCOUNT_ID) missing.push('CF_ACCOUNT_ID');
-
-  let lastSync: string | null = null;
-
-  if (hasCredentials) {
-    try {
-      const result = await sandbox.exec('cat /tmp/.last-sync 2>/dev/null || echo ""');
-      const timestamp = result.stdout?.trim();
-      if (timestamp && timestamp !== '') {
-        lastSync = timestamp;
-      }
-    } catch {
-      // Ignore errors checking sync status
-    }
-  }
+  let botConfig: BotConfig = { model: DEFAULT_MODEL, maxTokens: DEFAULT_MAX_TOKENS };
+  try {
+    const obj = await bucket.get(R2_KEYS.botConfig);
+    if (obj) botConfig = await obj.json();
+  } catch { /* use defaults */ }
 
   return c.json({
-    configured: hasCredentials,
-    missing: missing.length > 0 ? missing : undefined,
-    lastSync,
-    message: hasCredentials
-      ? 'R2 storage is configured. Your data will persist across container restarts.'
-      : 'R2 storage is not configured. Paired devices and conversations will be lost when the container restarts.',
+    ok: true,
+    bot: botInfo,
+    webhook: webhookInfo,
+    conversationCount: conversations.length,
+    model: env.ANTHROPIC_MODEL || botConfig.model,
+    maxTokens: botConfig.maxTokens,
+    allowedUsers: allowlist,
+    hasApiKey: !!env.ANTHROPIC_API_KEY,
+    hasBotToken: !!env.TELEGRAM_BOT_TOKEN,
   });
 });
 
-// POST /api/admin/storage/sync - Trigger a manual sync to R2
-adminApi.post('/storage/sync', async (c) => {
-  const sandbox = c.get('sandbox');
-
-  const result = await syncToR2(sandbox, c.env);
-
-  if (result.success) {
-    return c.json({
-      success: true,
-      message: 'Sync completed successfully',
-      lastSync: result.lastSync,
-    });
-  } else {
-    const status = result.error?.includes('not configured') ? 400 : 500;
-    return c.json(
-      {
-        success: false,
-        error: result.error,
-        details: result.details,
-      },
-      status,
-    );
-  }
+// GET /api/admin/soul - Get Soul.md content
+adminApi.get('/soul', async (c) => {
+  const content = await loadSoul(c.env.MOLTBOT_BUCKET);
+  return c.json({ content });
 });
 
-// POST /api/admin/gateway/restart - Kill the current gateway and start a new one
-adminApi.post('/gateway/restart', async (c) => {
-  const sandbox = c.get('sandbox');
+// PUT /api/admin/soul - Update Soul.md content
+adminApi.put('/soul', async (c) => {
+  const { content } = await c.req.json<{ content: string }>();
+  await saveSoul(c.env.MOLTBOT_BUCKET, content);
+  return c.json({ ok: true });
+});
+
+// GET /api/admin/allowlist - Get allowed user IDs
+adminApi.get('/allowlist', async (c) => {
+  const ids = await loadAllowlist(c.env.MOLTBOT_BUCKET);
+  return c.json({ userIds: ids });
+});
+
+// PUT /api/admin/allowlist - Update allowed user IDs
+adminApi.put('/allowlist', async (c) => {
+  const { userIds } = await c.req.json<{ userIds: number[] }>();
+  await saveAllowlist(c.env.MOLTBOT_BUCKET, userIds);
+  return c.json({ ok: true });
+});
+
+// GET /api/admin/conversations - List conversation summaries
+adminApi.get('/conversations', async (c) => {
+  const conversations = await listConversations(c.env.MOLTBOT_BUCKET);
+  return c.json({ conversations });
+});
+
+// GET /api/admin/conversations/:chatId - Full conversation
+adminApi.get('/conversations/:chatId', async (c) => {
+  const chatId = parseInt(c.req.param('chatId'), 10);
+  if (isNaN(chatId)) return c.json({ error: 'Invalid chatId' }, 400);
+
+  const conversation = await loadConversation(c.env.MOLTBOT_BUCKET, chatId);
+  return c.json(conversation);
+});
+
+// DELETE /api/admin/conversations/:chatId - Delete conversation
+adminApi.delete('/conversations/:chatId', async (c) => {
+  const chatId = parseInt(c.req.param('chatId'), 10);
+  if (isNaN(chatId)) return c.json({ error: 'Invalid chatId' }, 400);
+
+  await deleteConversation(c.env.MOLTBOT_BUCKET, chatId);
+  return c.json({ ok: true });
+});
+
+// POST /api/admin/webhook/register - Register Telegram webhook
+adminApi.post('/webhook/register', async (c) => {
+  const env = c.env;
+  if (!env.TELEGRAM_BOT_TOKEN) {
+    return c.json({ error: 'TELEGRAM_BOT_TOKEN not configured' }, 400);
+  }
+
+  const url = new URL(c.req.url);
+  const webhookUrl = `${url.protocol}//${url.host}/webhook/telegram`;
+  const telegram = new TelegramClient(env.TELEGRAM_BOT_TOKEN);
+
+  const result = await telegram.setWebhook(webhookUrl, env.TELEGRAM_WEBHOOK_SECRET);
+  return c.json({ ...result, webhookUrl });
+});
+
+// POST /api/admin/webhook/unregister - Unregister Telegram webhook
+adminApi.post('/webhook/unregister', async (c) => {
+  const env = c.env;
+  if (!env.TELEGRAM_BOT_TOKEN) {
+    return c.json({ error: 'TELEGRAM_BOT_TOKEN not configured' }, 400);
+  }
+
+  const telegram = new TelegramClient(env.TELEGRAM_BOT_TOKEN);
+  const result = await telegram.deleteWebhook();
+  return c.json(result);
+});
+
+// GET /api/admin/config - Get bot config
+adminApi.get('/config', async (c) => {
+  let botConfig: BotConfig = { model: DEFAULT_MODEL, maxTokens: DEFAULT_MAX_TOKENS };
+  try {
+    const obj = await c.env.MOLTBOT_BUCKET.get(R2_KEYS.botConfig);
+    if (obj) botConfig = await obj.json();
+  } catch { /* use defaults */ }
+
+  return c.json(botConfig);
+});
+
+// PUT /api/admin/config - Update bot config
+adminApi.put('/config', async (c) => {
+  const config = await c.req.json<Partial<BotConfig>>();
+  const current: BotConfig = { model: DEFAULT_MODEL, maxTokens: DEFAULT_MAX_TOKENS };
 
   try {
-    // Find and kill the existing gateway process
-    const existingProcess = await findExistingMoltbotProcess(sandbox);
+    const obj = await c.env.MOLTBOT_BUCKET.get(R2_KEYS.botConfig);
+    if (obj) Object.assign(current, await obj.json());
+  } catch { /* use defaults */ }
 
-    if (existingProcess) {
-      console.log('Killing existing gateway process:', existingProcess.id);
-      try {
-        await existingProcess.kill();
-      } catch (killErr) {
-        console.error('Error killing process:', killErr);
-      }
-      // Wait a moment for the process to die
-      await new Promise((r) => setTimeout(r, 2000));
-    }
+  if (config.model) current.model = config.model;
+  if (config.maxTokens) current.maxTokens = config.maxTokens;
 
-    // Start a new gateway in the background
-    const bootPromise = ensureMoltbotGateway(sandbox, c.env).catch((err) => {
-      console.error('Gateway restart failed:', err);
-    });
-    c.executionCtx.waitUntil(bootPromise);
+  await c.env.MOLTBOT_BUCKET.put(R2_KEYS.botConfig, JSON.stringify(current));
+  return c.json({ ok: true, config: current });
+});
 
-    return c.json({
-      success: true,
-      message: existingProcess
-        ? 'Gateway process killed, new instance starting...'
-        : 'No existing process found, starting new instance...',
-      previousProcessId: existingProcess?.id,
-    });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return c.json({ error: errorMessage }, 500);
+// GET /api/admin/skills - List all skills
+adminApi.get('/skills', async (c) => {
+  const skills = await listSkills(c.env.MOLTBOT_BUCKET);
+  return c.json({ skills });
+});
+
+// GET /api/admin/skills/:name - Get skill content
+adminApi.get('/skills/:name', async (c) => {
+  const name = c.req.param('name');
+  const content = await loadSkill(c.env.MOLTBOT_BUCKET, name);
+  if (content === null) {
+    return c.json({ error: 'Skill not found' }, 404);
   }
+  return c.json({ name, content });
+});
+
+// PUT /api/admin/skills/:name - Create/update a skill
+adminApi.put('/skills/:name', async (c) => {
+  const name = c.req.param('name');
+  const { content } = await c.req.json<{ content: string }>();
+  await saveSkill(c.env.MOLTBOT_BUCKET, name, content);
+  return c.json({ ok: true });
+});
+
+// DELETE /api/admin/skills/:name - Delete a skill
+adminApi.delete('/skills/:name', async (c) => {
+  const name = c.req.param('name');
+  await deleteSkill(c.env.MOLTBOT_BUCKET, name);
+  return c.json({ ok: true });
 });
 
 // Mount admin API routes under /admin

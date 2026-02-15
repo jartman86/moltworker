@@ -26,6 +26,36 @@
   color: var(--text-primary);
 }
 
+/* Tab navigation */
+.tab-nav {
+  background-color: var(--surface-color);
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  padding: 0 2rem;
+  gap: 0;
+}
+
+.tab-btn {
+  padding: 0.75rem 1.25rem;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-secondary);
+  font-weight: 500;
+  font-size: 0.875rem;
+  transition: all 0.15s ease;
+}
+
+.tab-btn:hover {
+  color: var(--text-primary);
+  background-color: var(--surface-hover);
+}
+
+.tab-btn.active {
+  color: var(--primary-color);
+  border-bottom-color: var(--primary-color);
+}
+
 .app-main {
   flex: 1;
   padding: 2rem;
@@ -38,6 +68,11 @@
 @media (max-width: 768px) {
   .app-header {
     padding: 1rem;
+  }
+
+  .tab-nav {
+    padding: 0 1rem;
+    overflow-x: auto;
   }
 
   .app-main {
