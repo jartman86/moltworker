@@ -63,19 +63,54 @@ export class MoltbookClient {
     const body: Record<string, string> = { submolt, title };
     if (content) body.content = content;
     if (url) body.url = url;
-    return this.request('/posts', {
+    const result = await this.request<{
+      success: boolean;
+      verification_required?: boolean;
+      verification?: { code: string; challenge: string };
+      post?: { id: string };
+    }>('/posts', {
       method: 'POST',
       body: JSON.stringify(body),
     });
+
+    if (result.verification_required && result.verification) {
+      const answer = solveChallenge(result.verification.challenge);
+      await this.request('/verify', {
+        method: 'POST',
+        body: JSON.stringify({
+          verification_code: result.verification.code,
+          answer,
+        }),
+      });
+    }
+
+    return result;
   }
 
   async createComment(postId: string, content: string, parentId?: string): Promise<unknown> {
     const body: Record<string, string> = { content };
     if (parentId) body.parent_id = parentId;
-    return this.request(`/posts/${postId}/comments`, {
+    const result = await this.request<{
+      success: boolean;
+      verification_required?: boolean;
+      verification?: { code: string; challenge: string };
+    }>(`/posts/${postId}/comments`, {
       method: 'POST',
       body: JSON.stringify(body),
     });
+
+    if (result.verification_required && result.verification) {
+      const answer = solveChallenge(result.verification.challenge);
+      await this.request('/verify', {
+        method: 'POST',
+        body: JSON.stringify({
+          verification_code: result.verification.code,
+          answer,
+        }),
+      });
+    }
+
+    return result;
   }
 
   async getComments(postId: string, sort = 'top'): Promise<unknown> {
@@ -133,4 +168,62 @@ export class MoltbookClient {
   async getDMRequests(): Promise<unknown> {
     return this.request('/agents/dm/requests');
   }
+}
+
+/**
+ * Solve Moltbook's verification math challenges.
+ * Challenges describe a velocity + acceleration problem in obfuscated text.
+ * Extract the two numbers and add them.
+ */
+function solveChallenge(challenge: string): string {
+  // Normalize: strip non-alphanumeric except spaces, periods, commas
+  const clean = challenge.replace(/[^a-zA-Z0-9\s.,]/g, '').replace(/\s+/g, ' ').toLowerCase();
+
+  // Extract all numbers (written or digit) from the challenge
+  const wordToNum: Record<string, number> = {
+    zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7,
+    eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13,
+    fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18,
+    nineteen: 19, twenty: 20, thirty: 30, forty: 40, fifty: 50,
+    sixty: 60, seventy: 70, eighty: 80, ninety: 90,
+  };
+
+  // Try to find digit-based numbers first
+  const digitNumbers = clean.match(/\d+\.?\d*/g)?.map(Number) || [];
+
+  // Try to find word-based compound numbers like "thirty two" → 32
+  const words = clean.split(' ');
+  const wordNumbers: number[] = [];
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
+    if (wordToNum[w] !== undefined) {
+      const val = wordToNum[w];
+      // Check if next word is also a number (compound like "thirty two")
+      if (i + 1 < words.length && wordToNum[words[i + 1]] !== undefined) {
+        const next = wordToNum[words[i + 1]];
+        if (val >= 20 && next < 10) {
+          wordNumbers.push(val + next);
+          i++; // skip next
+          continue;
+        }
+      }
+      wordNumbers.push(val);
+    }
+  }
+
+  const numbers = digitNumbers.length >= 2 ? digitNumbers : wordNumbers;
+
+  if (numbers.length >= 2) {
+    // velocity + acceleration = new velocity
+    const result = numbers[0] + numbers[1];
+    return result.toFixed(2);
+  }
+
+  // Fallback: just return the sum of whatever we found
+  const all = [...digitNumbers, ...wordNumbers];
+  if (all.length >= 2) {
+    return (all[0] + all[1]).toFixed(2);
+  }
+
+  return '0.00';
 }
