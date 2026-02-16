@@ -36,9 +36,8 @@ export interface MoltbotEnv {
   // Google Search
   GOOGLE_SEARCH_API_KEY?: string;
   GOOGLE_SEARCH_CX?: string;
-  // Kling AI (video generation)
-  KLING_ACCESS_KEY?: string;
-  KLING_SECRET_KEY?: string;
+  // fal.ai (video generation via Kling)
+  FAL_API_KEY?: string;
   // Flux Pro (image generation)
   FLUX_API_KEY?: string;
   // Ideogram (graphic generation)

@@ -269,7 +269,7 @@ adminApi.get('/platforms', async (c) => {
         configured: !!(env.LINKEDIN_ACCESS_TOKEN && env.LINKEDIN_PERSON_URN),
       },
       kling: {
-        configured: !!(env.KLING_ACCESS_KEY && env.KLING_SECRET_KEY),
+        configured: !!env.FAL_API_KEY,
       },
       flux: {
         configured: !!env.FLUX_API_KEY,
@@ -323,7 +323,7 @@ adminApi.post('/platforms/:name/test', async (c) => {
       case 'kling': {
         const client = new KlingClient(env);
         if (!client.isConfigured()) return c.json({ ok: false, error: 'Not configured' });
-        return c.json({ ok: true, message: 'Kling AI credentials present' });
+        return c.json({ ok: true, message: 'fal.ai API key present (Kling video)' });
       }
       case 'flux': {
         const client = new FluxClient(env);

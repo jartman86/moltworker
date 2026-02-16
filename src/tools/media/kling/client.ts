@@ -1,69 +1,42 @@
 /**
- * Kling AI API client (video generation)
- * Uses JWT auth signed with HMAC-SHA256 via Web Crypto API
+ * Kling video generation via fal.ai
+ * Uses fal.ai queue API: submit → poll → get result
+ * Model: Kling 2.5 Turbo (~$0.35 per 5s clip)
  */
 import type { MoltbotEnv } from '../../../types';
 
-const KLING_API = 'https://api.klingai.com/v1';
+const FAL_QUEUE = 'https://queue.fal.run';
+const MODEL_ID = 'fal-ai/kling-video/v2.5-turbo/pro/text-to-video';
 
-interface KlingTaskResponse {
-  code: number;
-  message: string;
+interface FalSubmitResponse {
   request_id: string;
-  data: {
-    task_id: string;
-    task_status: string;
-  };
+  response_url: string;
+  status_url: string;
 }
 
-interface KlingResultResponse {
-  code: number;
-  message: string;
-  request_id: string;
-  data: {
-    task_id: string;
-    task_status: 'submitted' | 'processing' | 'succeed' | 'failed';
-    task_status_msg?: string;
-    task_result?: {
-      videos: Array<{
-        id: string;
-        url: string;
-        duration: string;
-      }>;
-    };
+interface FalStatusResponse {
+  status: 'IN_QUEUE' | 'IN_PROGRESS' | 'COMPLETED';
+  queue_position?: number;
+  response_url: string;
+}
+
+interface FalResultResponse {
+  video: {
+    url: string;
+    content_type?: string;
+    file_name?: string;
+    file_size?: number;
   };
 }
 
 export class KlingClient {
   constructor(private env: MoltbotEnv) {}
 
-  private async createJWT(): Promise<string> {
-    const header = { alg: 'HS256', typ: 'JWT' };
-    const now = Math.floor(Date.now() / 1000);
-    const payload = {
-      iss: this.env.KLING_ACCESS_KEY!,
-      exp: now + 1800, // 30 minutes
-      nbf: now - 5,
-      iat: now,
+  private get headers(): Record<string, string> {
+    return {
+      'Content-Type': 'application/json',
+      Authorization: `Key ${this.env.FAL_API_KEY!}`,
     };
-
-    const encoder = new TextEncoder();
-    const headerB64 = base64url(JSON.stringify(header));
-    const payloadB64 = base64url(JSON.stringify(payload));
-    const signingInput = `${headerB64}.${payloadB64}`;
-
-    const key = await crypto.subtle.importKey(
-      'raw',
-      encoder.encode(this.env.KLING_SECRET_KEY!),
-      { name: 'HMAC', hash: 'SHA-256' },
-      false,
-      ['sign'],
-    );
-
-    const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(signingInput));
-    const signatureB64 = base64url(signature);
-
-    return `${signingInput}.${signatureB64}`;
   }
 
   async submitVideo(params: {
@@ -71,112 +44,93 @@ export class KlingClient {
     negative_prompt?: string;
     duration?: string;
     aspect_ratio?: string;
-  }): Promise<string> {
-    const jwt = await this.createJWT();
-
+  }): Promise<{ requestId: string; statusUrl: string; responseUrl: string }> {
     const body: Record<string, unknown> = {
-      model_name: 'kling-v1',
       prompt: params.prompt,
-      cfg_scale: 0.5,
-      mode: 'std',
       duration: params.duration || '5',
       aspect_ratio: params.aspect_ratio || '16:9',
+      cfg_scale: 0.5,
     };
 
     if (params.negative_prompt) {
       body.negative_prompt = params.negative_prompt;
     }
 
-    const resp = await fetch(`${KLING_API}/videos/text2video`, {
+    const resp = await fetch(`${FAL_QUEUE}/${MODEL_ID}`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${jwt}`,
-      },
+      headers: this.headers,
       body: JSON.stringify(body),
     });
 
     if (!resp.ok) {
       const error = await resp.text();
-      throw new Error(`Kling submit failed (${resp.status}): ${error}`);
+      throw new Error(`fal.ai submit failed (${resp.status}): ${error}`);
     }
 
-    const data: KlingTaskResponse = await resp.json();
-    if (data.code !== 0) {
-      throw new Error(`Kling submit error: ${data.message}`);
-    }
-
-    return data.data.task_id;
+    const data: FalSubmitResponse = await resp.json();
+    return {
+      requestId: data.request_id,
+      statusUrl: data.status_url,
+      responseUrl: data.response_url,
+    };
   }
 
-  async pollVideo(taskId: string): Promise<{ status: string; videoUrl?: string; duration?: string }> {
-    const jwt = await this.createJWT();
-
-    const resp = await fetch(`${KLING_API}/videos/text2video/${taskId}`, {
-      headers: {
-        Authorization: `Bearer ${jwt}`,
-      },
-    });
+  async pollStatus(requestId: string): Promise<FalStatusResponse> {
+    const resp = await fetch(
+      `${FAL_QUEUE}/${MODEL_ID}/requests/${requestId}/status`,
+      { headers: this.headers },
+    );
 
     if (!resp.ok) {
       const error = await resp.text();
-      throw new Error(`Kling poll failed (${resp.status}): ${error}`);
+      throw new Error(`fal.ai status check failed (${resp.status}): ${error}`);
     }
 
-    const data: KlingResultResponse = await resp.json();
-    if (data.code !== 0) {
-      throw new Error(`Kling poll error: ${data.message}`);
+    return resp.json();
+  }
+
+  async getResult(requestId: string): Promise<FalResultResponse> {
+    const resp = await fetch(
+      `${FAL_QUEUE}/${MODEL_ID}/requests/${requestId}`,
+      { headers: this.headers },
+    );
+
+    if (!resp.ok) {
+      const error = await resp.text();
+      throw new Error(`fal.ai result fetch failed (${resp.status}): ${error}`);
     }
 
-    const task = data.data;
-
-    if (task.task_status === 'succeed' && task.task_result?.videos?.length) {
-      const video = task.task_result.videos[0];
-      return { status: 'succeed', videoUrl: video.url, duration: video.duration };
-    }
-    if (task.task_status === 'failed') {
-      throw new Error(`Kling generation failed: ${task.task_status_msg || 'Unknown error'}`);
-    }
-
-    return { status: task.task_status };
+    return resp.json();
   }
 
   async generateVideo(
     params: { prompt: string; negative_prompt?: string; duration?: string; aspect_ratio?: string },
     maxWaitMs: number = 300_000,
     pollIntervalMs: number = 10_000,
-  ): Promise<{ videoUrl: string; duration?: string }> {
-    const taskId = await this.submitVideo(params);
+  ): Promise<{ videoUrl: string; duration: string }> {
+    const { requestId } = await this.submitVideo(params);
     const deadline = Date.now() + maxWaitMs;
 
     while (Date.now() < deadline) {
-      const result = await this.pollVideo(taskId);
-      if (result.videoUrl) return { videoUrl: result.videoUrl, duration: result.duration };
+      const status = await this.pollStatus(requestId);
+
+      if (status.status === 'COMPLETED') {
+        const result = await this.getResult(requestId);
+        return {
+          videoUrl: result.video.url,
+          duration: params.duration || '5',
+        };
+      }
+
       await sleep(pollIntervalMs);
     }
 
-    throw new Error('Kling video generation timed out (5 min limit)');
+    throw new Error('Video generation timed out (5 min limit)');
   }
 
   isConfigured(): boolean {
-    return !!(this.env.KLING_ACCESS_KEY && this.env.KLING_SECRET_KEY);
+    return !!this.env.FAL_API_KEY;
   }
-}
-
-function base64url(input: string | ArrayBuffer): string {
-  let bytes: Uint8Array;
-  if (typeof input === 'string') {
-    bytes = new TextEncoder().encode(input);
-  } else {
-    bytes = new Uint8Array(input);
-  }
-
-  let binary = '';
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
-  }
-
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
 function sleep(ms: number): Promise<void> {

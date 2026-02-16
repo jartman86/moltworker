@@ -49,9 +49,9 @@ const PLATFORM_CONFIGS: Omit<PlatformConfig, 'status'>[] = [
   },
   {
     key: 'kling',
-    name: 'Kling AI',
-    description: 'Generate cinematic video clips from text prompts (~$0.10-0.20/clip).',
-    secrets: ['KLING_ACCESS_KEY', 'KLING_SECRET_KEY'],
+    name: 'Kling via fal.ai',
+    description: 'Generate cinematic video clips from text prompts via Kling 2.5 Turbo (~$0.35/clip).',
+    secrets: ['FAL_API_KEY'],
   },
   {
     key: 'flux',

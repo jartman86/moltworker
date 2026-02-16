@@ -1,5 +1,5 @@
 /**
- * Kling AI tool registrations
+ * Kling video tool registrations (via fal.ai)
  */
 import { registerTool } from '../../registry';
 import { KlingClient } from './client';
@@ -10,7 +10,7 @@ export function registerKlingTools(): void {
     {
       name: 'generate_video',
       description:
-        'Generate a cinematic video clip using Kling AI. Best for motion content: drone shots, cinematic sequences, product reveals, social media video clips. Cost: ~$0.10-0.20 per clip. Takes 1-5 minutes.',
+        'Generate a cinematic video clip using Kling 2.5 Turbo via fal.ai. Best for motion content: drone shots, cinematic sequences, product reveals, social media video clips. Cost: ~$0.35 per 5s clip. Takes 1-5 minutes.',
       input_schema: {
         type: 'object',
         properties: {
@@ -21,7 +21,7 @@ export function registerKlingTools(): void {
           },
           negative_prompt: {
             type: 'string',
-            description: 'What to avoid. Default recommended: "blurry, low quality, watermark, text overlay, jittery, distorted"',
+            description: 'What to avoid. Default recommended: "blur, distort, and low quality"',
           },
           duration: {
             type: 'string',
@@ -40,11 +40,11 @@ export function registerKlingTools(): void {
     async (input, ctx) => {
       const client = new KlingClient(ctx.env);
       if (!client.isConfigured()) {
-        return { result: 'Kling AI is not configured. Set KLING_ACCESS_KEY and KLING_SECRET_KEY secrets.', isError: true };
+        return { result: 'Kling (fal.ai) is not configured. Set FAL_API_KEY secret.', isError: true };
       }
 
       const prompt = input.prompt as string;
-      const negative_prompt = (input.negative_prompt as string) || 'blurry, low quality, watermark, text overlay, jittery, distorted';
+      const negative_prompt = (input.negative_prompt as string) || 'blur, distort, and low quality';
       const duration = input.duration as string | undefined;
       const aspect_ratio = input.aspect_ratio as string | undefined;
 
@@ -58,7 +58,7 @@ export function registerKlingTools(): void {
       const stored = await downloadAndStore(ctx.bucket, ctx.chatId, videoUrl, 'kling');
 
       return {
-        result: `Video generated successfully!\nPublic path: ${stored.publicPath}\nDuration: ${videoDuration || duration || '5'}s\nSize: ${(stored.size / (1024 * 1024)).toFixed(1)} MB\nContent type: ${stored.contentType}\n\nUse send_media_to_chat to send this video to the conversation.`,
+        result: `Video generated successfully!\nPublic path: ${stored.publicPath}\nDuration: ${videoDuration}s\nSize: ${(stored.size / (1024 * 1024)).toFixed(1)} MB\nContent type: ${stored.contentType}\n\nUse send_media_to_chat to send this video to the conversation.`,
       };
     },
     { requiresConfirmation: true },
