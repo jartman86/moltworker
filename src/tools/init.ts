@@ -14,6 +14,7 @@ import { registerFluxTools } from './media/flux/tools';
 import { registerIdeogramTools } from './media/ideogram/tools';
 import { registerTogetherTools } from './media/together/tools';
 import { registerMediaSendTools } from './media/telegram-send';
+import { registerMoltbookTools } from './social/moltbook/tools';
 
 let initialized = false;
 
@@ -33,4 +34,5 @@ export function initializeTools(): void {
   registerIdeogramTools();
   registerTogetherTools();
   registerMediaSendTools();
+  registerMoltbookTools();
 }

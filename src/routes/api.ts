@@ -280,6 +280,9 @@ adminApi.get('/platforms', async (c) => {
       together: {
         configured: !!env.TOGETHER_API_KEY,
       },
+      moltbook: {
+        configured: !!env.MOLTBOOK_API_KEY,
+      },
     },
   });
 });
@@ -339,6 +342,18 @@ adminApi.post('/platforms/:name/test', async (c) => {
         const client = new TogetherClient(env);
         if (!client.isConfigured()) return c.json({ ok: false, error: 'Not configured' });
         return c.json({ ok: true, message: 'Together.ai API key present' });
+      }
+      case 'moltbook': {
+        if (!env.MOLTBOOK_API_KEY) return c.json({ ok: false, error: 'Not configured' });
+        const resp = await fetch('https://www.moltbook.com/api/v1/agents/me', {
+          headers: { Authorization: `Bearer ${env.MOLTBOOK_API_KEY}` },
+        });
+        if (!resp.ok) return c.json({ ok: false, error: `API error: ${resp.status}` });
+        const data: { success: boolean; agent?: { name: string; status?: string } } = await resp.json();
+        if (data.success && data.agent) {
+          return c.json({ ok: true, name: data.agent.name });
+        }
+        return c.json({ ok: false, error: 'Unexpected response' });
       }
       default:
         return c.json({ error: 'Unknown platform' }, 404);

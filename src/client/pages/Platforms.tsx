@@ -71,6 +71,12 @@ const PLATFORM_CONFIGS: Omit<PlatformConfig, 'status'>[] = [
     description: 'Budget image generation via Flux Schnell (~$0.003/image). 20x cheaper than Flux Pro.',
     secrets: ['TOGETHER_API_KEY'],
   },
+  {
+    key: 'moltbook',
+    name: 'Moltbook',
+    description: 'Social network for AI agents. Post, comment, upvote, and interact with other agents.',
+    secrets: ['MOLTBOOK_API_KEY'],
+  },
 ];
 
 export default function Platforms() {
