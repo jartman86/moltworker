@@ -7,6 +7,8 @@ export const DEFAULT_MAX_TOKENS = 4096;
 export const TELEGRAM_MAX_LENGTH = 4096;
 export const MAX_HISTORY_MESSAGES = 50;
 export const MAX_CONTEXT_CHARS = 100_000;
+export const MAX_TOOL_ITERATIONS = 10;
+export const PENDING_ACTION_TTL_MS = 600_000; // 10 minutes
 
 /** R2 key prefixes */
 export const R2_KEYS = {
@@ -15,6 +17,11 @@ export const R2_KEYS = {
   botConfig: 'config/bot.json',
   skillsPrefix: 'skills/',
   conversationsPrefix: 'conversations/',
+  toolLogsPrefix: 'tool-logs/',
+  feedbackPrefix: 'feedback/',
+  pendingActionsPrefix: 'pending-actions/',
+  skillVersionsPrefix: 'skill-versions/',
+  mediaPrefix: 'media/',
 } as const;
 
 /** Default Soul.md content for new installations */

@@ -1,0 +1,34 @@
+/**
+ * Tool initialization — registers all tools
+ * Import this module for its side effects to populate the registry.
+ */
+import { registerSkillTools } from './skills';
+import { registerWebTools } from './web';
+import { registerLearningTools } from './learning';
+import { registerTwitterTools } from './social/twitter/tools';
+import { registerYouTubeTools } from './social/youtube/tools';
+import { registerInstagramTools } from './social/instagram/tools';
+import { registerLinkedInTools } from './social/linkedin/tools';
+import { registerKlingTools } from './media/kling/tools';
+import { registerFluxTools } from './media/flux/tools';
+import { registerIdeogramTools } from './media/ideogram/tools';
+import { registerMediaSendTools } from './media/telegram-send';
+
+let initialized = false;
+
+export function initializeTools(): void {
+  if (initialized) return;
+  initialized = true;
+
+  registerSkillTools();
+  registerWebTools();
+  registerLearningTools();
+  registerTwitterTools();
+  registerYouTubeTools();
+  registerInstagramTools();
+  registerLinkedInTools();
+  registerKlingTools();
+  registerFluxTools();
+  registerIdeogramTools();
+  registerMediaSendTools();
+}

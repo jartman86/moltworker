@@ -10,17 +10,24 @@ export class TelegramClient {
     this.baseUrl = `${TELEGRAM_API}${token}`;
   }
 
-  async sendMessage(chatId: number, text: string, parseMode?: 'HTML'): Promise<void> {
+  async sendMessage(
+    chatId: number,
+    text: string,
+    parseMode?: 'HTML',
+    replyMarkup?: Record<string, unknown>,
+  ): Promise<void> {
     const chunks = splitMessage(text);
 
-    for (const chunk of chunks) {
+    for (let i = 0; i < chunks.length; i++) {
+      // Only attach reply_markup to the last chunk
+      const markup = i === chunks.length - 1 ? replyMarkup : undefined;
       try {
-        await this.send(chatId, chunk, parseMode);
+        await this.send(chatId, chunks[i], parseMode, markup);
       } catch (err) {
         // If HTML parse fails, retry as plain text
         if (parseMode === 'HTML') {
           console.error('[TG] HTML parse failed, retrying as plain text:', err);
-          await this.send(chatId, chunk);
+          await this.send(chatId, chunks[i], undefined, markup);
         } else {
           throw err;
         }
@@ -28,9 +35,15 @@ export class TelegramClient {
     }
   }
 
-  private async send(chatId: number, text: string, parseMode?: string): Promise<void> {
+  private async send(
+    chatId: number,
+    text: string,
+    parseMode?: string,
+    replyMarkup?: Record<string, unknown>,
+  ): Promise<void> {
     const body: Record<string, unknown> = { chat_id: chatId, text };
     if (parseMode) body.parse_mode = parseMode;
+    if (replyMarkup) body.reply_markup = replyMarkup;
 
     const resp = await fetch(`${this.baseUrl}/sendMessage`, {
       method: 'POST',
@@ -42,6 +55,20 @@ export class TelegramClient {
       const error = await resp.text();
       throw new Error(`Telegram sendMessage failed (${resp.status}): ${error}`);
     }
+  }
+
+  async answerCallbackQuery(
+    callbackQueryId: string,
+    text?: string,
+  ): Promise<void> {
+    const body: Record<string, unknown> = { callback_query_id: callbackQueryId };
+    if (text) body.text = text;
+
+    await fetch(`${this.baseUrl}/answerCallbackQuery`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
   }
 
   async sendChatAction(chatId: number, action: string = 'typing'): Promise<void> {
@@ -83,6 +110,38 @@ export class TelegramClient {
   async getMe(): Promise<{ ok: boolean; result: { id: number; first_name: string; username?: string } }> {
     const resp = await fetch(`${this.baseUrl}/getMe`);
     return resp.json();
+  }
+
+  async sendPhoto(chatId: number, photoUrl: string, caption?: string): Promise<void> {
+    const body: Record<string, unknown> = { chat_id: chatId, photo: photoUrl };
+    if (caption) body.caption = caption;
+
+    const resp = await fetch(`${this.baseUrl}/sendPhoto`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    if (!resp.ok) {
+      const error = await resp.text();
+      throw new Error(`Telegram sendPhoto failed (${resp.status}): ${error}`);
+    }
+  }
+
+  async sendVideo(chatId: number, videoUrl: string, caption?: string): Promise<void> {
+    const body: Record<string, unknown> = { chat_id: chatId, video: videoUrl };
+    if (caption) body.caption = caption;
+
+    const resp = await fetch(`${this.baseUrl}/sendVideo`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    if (!resp.ok) {
+      const error = await resp.text();
+      throw new Error(`Telegram sendVideo failed (${resp.status}): ${error}`);
+    }
   }
 }
 

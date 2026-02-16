@@ -166,3 +166,109 @@ export function deleteSkill(name: string): Promise<{ ok: boolean }> {
     method: 'DELETE',
   });
 }
+
+// Skill Versions
+export interface SkillVersionInfo {
+  timestamp: number;
+}
+
+export function getSkillVersions(name: string): Promise<{ versions: SkillVersionInfo[] }> {
+  return apiRequest<{ versions: SkillVersionInfo[] }>(`/skills/${encodeURIComponent(name)}/versions`);
+}
+
+export function restoreSkillVersion(name: string, timestamp: number): Promise<{ ok: boolean }> {
+  return apiRequest<{ ok: boolean }>(`/skills/${encodeURIComponent(name)}/versions/${timestamp}/restore`, {
+    method: 'POST',
+  });
+}
+
+// Platforms
+export interface PlatformStatus {
+  configured: boolean;
+  oauthConfigured?: boolean;
+}
+
+export interface PlatformsResponse {
+  platforms: {
+    twitter: PlatformStatus;
+    youtube: PlatformStatus;
+    instagram: PlatformStatus;
+    linkedin: PlatformStatus;
+    kling: PlatformStatus;
+    flux: PlatformStatus;
+    ideogram: PlatformStatus;
+  };
+}
+
+export function getPlatforms(): Promise<PlatformsResponse> {
+  return apiRequest<PlatformsResponse>('/platforms');
+}
+
+export function testPlatform(name: string): Promise<{ ok: boolean; error?: string; [key: string]: unknown }> {
+  return apiRequest<{ ok: boolean; error?: string }>(`/platforms/${name}/test`, {
+    method: 'POST',
+  });
+}
+
+// Feedback
+export interface FeedbackEntry {
+  chatId: number;
+  messageTimestamp: number;
+  userMessage: string;
+  assistantResponse: string;
+  rating: 'positive' | 'negative';
+  feedbackText?: string;
+  timestamp: number;
+}
+
+export interface FeedbackSummary {
+  total: number;
+  positive: number;
+  negative: number;
+  recentNegative: FeedbackEntry[];
+}
+
+export function getFeedbackSummary(): Promise<FeedbackSummary> {
+  return apiRequest<FeedbackSummary>('/feedback');
+}
+
+// Learning
+export interface LearningAnalysis {
+  analysis: string;
+  toolCalls: Array<{
+    toolName: string;
+    input: Record<string, unknown>;
+    result: string;
+    isError: boolean;
+    durationMs: number;
+    wasConfirmationGated: boolean;
+  }>;
+  tokens: { input: number; output: number };
+  iterations: number;
+}
+
+export function triggerLearningAnalysis(): Promise<LearningAnalysis> {
+  return apiRequest<LearningAnalysis>('/learning/analyze', { method: 'POST' });
+}
+
+// Tool Logs
+export interface ToolLog {
+  chatId: number;
+  timestamp: number;
+  userMessage: string;
+  toolCalls: Array<{
+    toolName: string;
+    input: Record<string, unknown>;
+    result: string;
+    isError: boolean;
+    durationMs: number;
+    wasConfirmationGated: boolean;
+  }>;
+  inputTokens: number;
+  outputTokens: number;
+  iterations: number;
+}
+
+export function getToolLogs(): Promise<{ logs: ToolLog[] }> {
+  return apiRequest<{ logs: ToolLog[] }>('/tool-logs');
+}
