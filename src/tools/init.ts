@@ -12,6 +12,7 @@ import { registerLinkedInTools } from './social/linkedin/tools';
 import { registerKlingTools } from './media/kling/tools';
 import { registerFluxTools } from './media/flux/tools';
 import { registerIdeogramTools } from './media/ideogram/tools';
+import { registerTogetherTools } from './media/together/tools';
 import { registerMediaSendTools } from './media/telegram-send';
 
 let initialized = false;
@@ -30,5 +31,6 @@ export function initializeTools(): void {
   registerKlingTools();
   registerFluxTools();
   registerIdeogramTools();
+  registerTogetherTools();
   registerMediaSendTools();
 }

@@ -43,6 +43,8 @@ export interface MoltbotEnv {
   FLUX_API_KEY?: string;
   // Ideogram (graphic generation)
   IDEOGRAM_API_KEY?: string;
+  // Together.ai (budget image generation)
+  TOGETHER_API_KEY?: string;
   // Worker public URL (for media serving)
   WORKER_PUBLIC_URL?: string;
   // Dev/test mode

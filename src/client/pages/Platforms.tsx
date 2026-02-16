@@ -65,6 +65,12 @@ const PLATFORM_CONFIGS: Omit<PlatformConfig, 'status'>[] = [
     description: 'Generate graphics with text overlays from text prompts (~$0.04-0.08/image).',
     secrets: ['IDEOGRAM_API_KEY'],
   },
+  {
+    key: 'together',
+    name: 'Together.ai',
+    description: 'Budget image generation via Flux Schnell (~$0.003/image). 20x cheaper than Flux Pro.',
+    secrets: ['TOGETHER_API_KEY'],
+  },
 ];
 
 export default function Platforms() {

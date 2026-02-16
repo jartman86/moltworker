@@ -27,6 +27,7 @@ import { LinkedInClient } from '../tools/social/linkedin/client';
 import { FluxClient } from '../tools/media/flux/client';
 import { IdeogramClient } from '../tools/media/ideogram/client';
 import { KlingClient } from '../tools/media/kling/client';
+import { TogetherClient } from '../tools/media/together/client';
 import { initializeTools, getToolDefinitions, executeTool } from '../tools';
 import type { ToolContext } from '../tools';
 import { callClaude } from '../claude/client';
@@ -276,6 +277,9 @@ adminApi.get('/platforms', async (c) => {
       ideogram: {
         configured: !!env.IDEOGRAM_API_KEY,
       },
+      together: {
+        configured: !!env.TOGETHER_API_KEY,
+      },
     },
   });
 });
@@ -330,6 +334,11 @@ adminApi.post('/platforms/:name/test', async (c) => {
         const client = new IdeogramClient(env);
         if (!client.isConfigured()) return c.json({ ok: false, error: 'Not configured' });
         return c.json({ ok: true, message: 'Ideogram API key present' });
+      }
+      case 'together': {
+        const client = new TogetherClient(env);
+        if (!client.isConfigured()) return c.json({ ok: false, error: 'Not configured' });
+        return c.json({ ok: true, message: 'Together.ai API key present' });
       }
       default:
         return c.json({ error: 'Unknown platform' }, 404);

@@ -197,6 +197,7 @@ export interface PlatformsResponse {
     kling: PlatformStatus;
     flux: PlatformStatus;
     ideogram: PlatformStatus;
+    together: PlatformStatus;
   };
 }
 
