@@ -13,6 +13,15 @@ import {
 import { callClaude } from '../claude/client';
 import { buildSystemPrompt } from '../claude/prompt';
 import { DEFAULT_MODEL, R2_KEYS } from '../config';
+import { initializeTools, getToolDefinitions, executeTool } from '../tools';
+import type { ToolContext } from '../tools';
+import type { ToolUseBlock } from '../claude/types';
+import {
+  loadPendingActions,
+  deletePendingAction,
+} from '../r2/pending-actions';
+import { executeToolDirect } from '../tools/registry';
+import { saveFeedback } from '../r2/feedback';
 
 /** Timing-safe string comparison */
 function timingSafeEqual(a: string, b: string): boolean {
@@ -62,6 +71,34 @@ async function processUpdate(
   bucket: R2Bucket,
   env: import('../types').MoltbotEnv,
 ): Promise<void> {
+  // Handle callback queries (inline button presses)
+  if (update.callback_query) {
+    const cb = update.callback_query;
+    const chatId = cb.message?.chat.id;
+    const userId = cb.from.id;
+    const data = cb.data;
+
+    if (!chatId || !data) {
+      await telegram.answerCallbackQuery(cb.id);
+      return;
+    }
+
+    // Check allowlist
+    const allowed = await isUserAllowed(bucket, userId, env.TELEGRAM_ALLOWED_USERS);
+    if (!allowed) {
+      await telegram.answerCallbackQuery(cb.id, 'Not authorized');
+      return;
+    }
+
+    if (data === 'feedback_positive' || data === 'feedback_negative') {
+      await handleFeedbackCallback(cb.id, chatId, data, telegram, bucket);
+      return;
+    }
+
+    await telegram.answerCallbackQuery(cb.id);
+    return;
+  }
+
   const message = update.message;
   if (!message) return;
 
@@ -91,6 +128,9 @@ async function processUpdate(
       return;
     }
 
+    // Initialize tools
+    initializeTools();
+
     // Send typing indicator
     await telegram.sendChatAction(chatId);
 
@@ -104,19 +144,51 @@ async function processUpdate(
     const contextMessages = getContextMessages(conversation.messages);
     contextMessages.push({ role: 'user', content: text });
 
-    // Call Claude
-    const response = await callClaude(env, systemPrompt, contextMessages);
+    // Set up tool context
+    const toolCtx: ToolContext = { env, bucket, chatId };
+    const tools = getToolDefinitions();
+
+    // Call Claude with tool support
+    const result = await callClaude(env, systemPrompt, contextMessages, {
+      tools: tools.length > 0 ? tools : undefined,
+      executeTools: tools.length > 0
+        ? (block: ToolUseBlock) => executeTool(block, toolCtx)
+        : undefined,
+      onToolIteration: () => telegram.sendChatAction(chatId),
+    });
+
+    // Log tool calls if any
+    if (result.toolCalls.length > 0) {
+      const logKey = `${R2_KEYS.toolLogsPrefix}${chatId}/${Date.now()}.json`;
+      await bucket.put(logKey, JSON.stringify({
+        chatId,
+        timestamp: Date.now(),
+        userMessage: text,
+        toolCalls: result.toolCalls,
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
+        iterations: result.iterations,
+      }));
+    }
 
     // Save updated conversation
     conversation.messages.push(
       { role: 'user', content: text, timestamp: Date.now() },
-      { role: 'assistant', content: response, timestamp: Date.now() },
+      { role: 'assistant', content: result.text, timestamp: Date.now() },
     );
     await saveConversation(bucket, conversation);
 
-    // Format and send response
-    const html = markdownToTelegramHtml(response);
-    await telegram.sendMessage(chatId, html, 'HTML');
+    // Format and send response with feedback buttons
+    const html = markdownToTelegramHtml(result.text);
+    const feedbackKeyboard = {
+      inline_keyboard: [
+        [
+          { text: '\u{1F44D}', callback_data: 'feedback_positive' },
+          { text: '\u{1F44E}', callback_data: 'feedback_negative' },
+        ],
+      ],
+    };
+    await telegram.sendMessage(chatId, html, 'HTML', feedbackKeyboard);
   } catch (err) {
     console.error('[WEBHOOK] Error processing message:', err);
     const errorMsg =
@@ -130,6 +202,46 @@ async function processUpdate(
   }
 }
 
+async function handleFeedbackCallback(
+  callbackQueryId: string,
+  chatId: number,
+  data: string,
+  telegram: TelegramClient,
+  bucket: R2Bucket,
+): Promise<void> {
+  const rating = data === 'feedback_positive' ? 'positive' : 'negative';
+
+  // Load conversation to get the last exchange
+  const conversation = await loadConversation(bucket, chatId);
+  const msgs = conversation.messages;
+
+  let userMessage = '';
+  let assistantResponse = '';
+
+  // Find the last user-assistant pair
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    if (msgs[i].role === 'assistant' && !assistantResponse) {
+      assistantResponse = msgs[i].content;
+    }
+    if (msgs[i].role === 'user' && assistantResponse && !userMessage) {
+      userMessage = msgs[i].content;
+      break;
+    }
+  }
+
+  await saveFeedback(bucket, {
+    chatId,
+    messageTimestamp: Date.now(),
+    userMessage,
+    assistantResponse,
+    rating,
+    timestamp: Date.now(),
+  });
+
+  const emoji = rating === 'positive' ? '\u{1F44D}' : '\u{1F44E}';
+  await telegram.answerCallbackQuery(callbackQueryId, `${emoji} Feedback recorded!`);
+}
+
 async function handleCommand(
   text: string,
   chatId: number,
@@ -137,13 +249,14 @@ async function handleCommand(
   bucket: R2Bucket,
   env: import('../types').MoltbotEnv,
 ): Promise<void> {
-  const command = text.split(' ')[0].split('@')[0].toLowerCase();
+  const parts = text.split(' ');
+  const command = parts[0].split('@')[0].toLowerCase();
 
   switch (command) {
     case '/start':
       await telegram.sendMessage(
         chatId,
-        "Hi! I'm Moltbot, your personal AI assistant. Send me a message and I'll respond using Claude.\n\nCommands:\n/clear - Reset conversation\n/model - Show current model\n/help - Show this help",
+        "Hi! I'm Big Earn, your personal AI assistant. Send me a message and I'll respond using Claude.\n\nCommands:\n/clear - Reset conversation\n/model - Show current model\n/approve - Approve a pending action\n/reject - Reject a pending action\n/feedback - Give text feedback on my last response\n/help - Show this help",
       );
       break;
 
@@ -162,16 +275,85 @@ async function handleCommand(
           if (config.model) model = config.model;
         }
       } catch { /* use default */ }
-      // Override with env if set
       if (env.ANTHROPIC_MODEL) model = env.ANTHROPIC_MODEL;
       await telegram.sendMessage(chatId, `Current model: ${model}`);
+      break;
+    }
+
+    case '/approve': {
+      initializeTools();
+      const actions = await loadPendingActions(bucket, chatId);
+      if (actions.length === 0) {
+        await telegram.sendMessage(chatId, 'No pending actions to approve.');
+        break;
+      }
+      const action = actions[0]; // Most recent
+      const toolCtx: ToolContext = { env, bucket, chatId };
+      await telegram.sendChatAction(chatId);
+      const result = await executeToolDirect(action.toolName, action.input, toolCtx);
+      await deletePendingAction(bucket, chatId, action.id);
+
+      if (result.isError) {
+        await telegram.sendMessage(chatId, `Action failed: ${result.result}`);
+      } else {
+        const html = markdownToTelegramHtml(`Action approved and executed!\n\n${result.result}`);
+        await telegram.sendMessage(chatId, html, 'HTML');
+      }
+      break;
+    }
+
+    case '/reject': {
+      const actions = await loadPendingActions(bucket, chatId);
+      if (actions.length === 0) {
+        await telegram.sendMessage(chatId, 'No pending actions to reject.');
+        break;
+      }
+      const action = actions[0];
+      await deletePendingAction(bucket, chatId, action.id);
+      await telegram.sendMessage(chatId, `Action cancelled: ${action.toolName}`);
+      break;
+    }
+
+    case '/feedback': {
+      const feedbackText = parts.slice(1).join(' ').trim();
+      if (!feedbackText) {
+        await telegram.sendMessage(chatId, 'Usage: /feedback <your feedback text>');
+        break;
+      }
+
+      const conversation = await loadConversation(bucket, chatId);
+      const msgs = conversation.messages;
+      let userMessage = '';
+      let assistantResponse = '';
+
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        if (msgs[i].role === 'assistant' && !assistantResponse) {
+          assistantResponse = msgs[i].content;
+        }
+        if (msgs[i].role === 'user' && assistantResponse && !userMessage) {
+          userMessage = msgs[i].content;
+          break;
+        }
+      }
+
+      await saveFeedback(bucket, {
+        chatId,
+        messageTimestamp: Date.now(),
+        userMessage,
+        assistantResponse,
+        rating: 'negative',
+        feedbackText,
+        timestamp: Date.now(),
+      });
+
+      await telegram.sendMessage(chatId, 'Thanks for the feedback! I\'ll use it to improve.');
       break;
     }
 
     case '/help':
       await telegram.sendMessage(
         chatId,
-        "Available commands:\n/start - Welcome message\n/clear - Reset conversation history\n/model - Show current AI model\n/help - Show this help",
+        "Available commands:\n/start - Welcome message\n/clear - Reset conversation history\n/model - Show current AI model\n/approve - Approve a pending action\n/reject - Reject a pending action\n/feedback <text> - Give feedback on my last response\n/help - Show this help",
       );
       break;
 
