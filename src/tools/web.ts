@@ -8,7 +8,7 @@ export function registerWebTools(): void {
     {
       name: 'web_search',
       description:
-        'Search the web using Google. Returns top results with titles, snippets, and URLs.',
+        'Search the web using Brave Search. Returns top results with titles, snippets, and URLs. Searches the entire web.',
       input_schema: {
         type: 'object',
         properties: {
@@ -22,38 +22,43 @@ export function registerWebTools(): void {
     },
     async (input, ctx) => {
       const query = input.query as string;
-      const apiKey = ctx.env.GOOGLE_SEARCH_API_KEY;
-      const cx = ctx.env.GOOGLE_SEARCH_CX;
+      const apiKey = ctx.env.BRAVE_SEARCH_API_KEY;
 
-      if (!apiKey || !cx) {
+      if (!apiKey) {
         return {
-          result: 'Web search is not configured. GOOGLE_SEARCH_API_KEY and GOOGLE_SEARCH_CX are required.',
+          result: 'Web search is not configured. Set BRAVE_SEARCH_API_KEY secret.',
           isError: true,
         };
       }
 
-      const url = new URL('https://www.googleapis.com/customsearch/v1');
-      url.searchParams.set('key', apiKey);
-      url.searchParams.set('cx', cx);
+      const url = new URL('https://api.search.brave.com/res/v1/web/search');
       url.searchParams.set('q', query);
-      url.searchParams.set('num', '5');
+      url.searchParams.set('count', '5');
 
-      const resp = await fetch(url.toString());
+      const resp = await fetch(url.toString(), {
+        headers: {
+          Accept: 'application/json',
+          'Accept-Encoding': 'gzip',
+          'X-Subscription-Token': apiKey,
+        },
+      });
+
       if (!resp.ok) {
         const error = await resp.text();
         return { result: `Search API error (${resp.status}): ${error}`, isError: true };
       }
 
       const data: {
-        items?: Array<{ title: string; snippet: string; link: string }>;
+        web?: { results?: Array<{ title: string; description: string; url: string }> };
       } = await resp.json();
 
-      if (!data.items || data.items.length === 0) {
+      const items = data.web?.results;
+      if (!items || items.length === 0) {
         return { result: 'No results found.' };
       }
 
-      const results = data.items
-        .map((item, i) => `${i + 1}. **${item.title}**\n   ${item.snippet}\n   ${item.link}`)
+      const results = items
+        .map((item, i) => `${i + 1}. **${item.title}**\n   ${item.description}\n   ${item.url}`)
         .join('\n\n');
 
       return { result: results };

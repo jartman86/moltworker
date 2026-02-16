@@ -33,9 +33,8 @@ export interface MoltbotEnv {
   // LinkedIn
   LINKEDIN_ACCESS_TOKEN?: string;
   LINKEDIN_PERSON_URN?: string;
-  // Google Search
-  GOOGLE_SEARCH_API_KEY?: string;
-  GOOGLE_SEARCH_CX?: string;
+  // Brave Search
+  BRAVE_SEARCH_API_KEY?: string;
   // fal.ai (video generation via Kling)
   FAL_API_KEY?: string;
   // Flux Pro (image generation)
