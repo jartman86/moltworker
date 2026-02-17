@@ -1,5 +1,5 @@
 import type { MoltbotEnv } from '../types';
-import { DEFAULT_MODEL, DEFAULT_MAX_TOKENS, MAX_TOOL_ITERATIONS, R2_KEYS, type BotConfig } from '../config';
+import { DEFAULT_MODEL, DEFAULT_MAX_TOKENS, MAX_TOOL_ITERATIONS, WALL_CLOCK_TIMEOUT_MS, R2_KEYS, type BotConfig } from '../config';
 import type {
   ClaudeMessage,
   ClaudeResponse,
@@ -37,7 +37,7 @@ async function loadBotConfig(bucket: R2Bucket): Promise<BotConfig> {
   return { model: DEFAULT_MODEL, maxTokens: DEFAULT_MAX_TOKENS };
 }
 
-const RETRY_DELAYS = [1000, 3000, 8000]; // ms — 3 retries, must fit within CF Workers 30s timeout
+const RETRY_DELAYS = [2000, 5000, 15000]; // ms — 3 retries with longer backoff to let rate limit window pass
 
 async function fetchWithRetry(apiKey: string, body: Record<string, unknown>): Promise<Response> {
   const requestBody = JSON.stringify(body);
@@ -98,11 +98,20 @@ export async function callClaude(
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
   let iterations = 0;
+  const startTime = Date.now();
+  let lastText = '';
 
   // Copy messages so we don't mutate the caller's array
   const conversationMessages: ClaudeMessage[] = [...messages];
 
   while (iterations < MAX_TOOL_ITERATIONS) {
+    // Check wall clock — bail before Cloudflare kills us
+    const elapsed = Date.now() - startTime;
+    if (elapsed > WALL_CLOCK_TIMEOUT_MS) {
+      console.log(`[CLAUDE] Wall clock timeout after ${elapsed}ms and ${iterations} iterations`);
+      break;
+    }
+
     iterations++;
 
     const body: Record<string, unknown> = {
@@ -131,11 +140,14 @@ export async function callClaude(
       totalOutputTokens += data.usage.output_tokens;
     }
 
-    // If no tool use or no executor, extract text and return
+    // Capture any text from this response
+    const iterationText = extractText(data.content);
+    if (iterationText) lastText = iterationText;
+
+    // If no tool use or no executor, return
     if (data.stop_reason !== 'tool_use' || !options?.executeTools) {
-      const text = extractText(data.content);
       return {
-        text: text || '(No response)',
+        text: lastText || '(No response)',
         toolCalls,
         inputTokens: totalInputTokens,
         outputTokens: totalOutputTokens,
@@ -194,9 +206,9 @@ export async function callClaude(
     }
   }
 
-  // Max iterations reached — extract whatever text we have
+  // Max iterations or timeout reached — return whatever we have
   return {
-    text: 'I reached the maximum number of tool iterations. Here is what I have so far.',
+    text: lastText || 'I ran out of time processing your request. Here is what I completed so far.',
     toolCalls,
     inputTokens: totalInputTokens,
     outputTokens: totalOutputTokens,

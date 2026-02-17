@@ -72,6 +72,17 @@ async function processUpdate(
   bucket: R2Bucket,
   env: import('../types').MoltbotEnv,
 ): Promise<void> {
+  // Deduplicate by update_id — Telegram may deliver the same update multiple times
+  const updateId = update.update_id;
+  const dedupeKey = `locks/update_${updateId}`;
+  const alreadyProcessed = await bucket.head(dedupeKey);
+  if (alreadyProcessed) {
+    console.log(`[WEBHOOK] Skipping duplicate update_id=${updateId}`);
+    return;
+  }
+  // Mark as seen immediately (tiny empty object — race window is ~ms)
+  await bucket.put(dedupeKey, '1');
+
   // Handle callback queries (inline button presses)
   if (update.callback_query) {
     const cb = update.callback_query;
@@ -128,6 +139,19 @@ async function processUpdate(
       await handleCommand(text, chatId, telegram, bucket, env);
       return;
     }
+
+    // Per-chat concurrency lock — only one Claude call per chat at a time
+    const chatLockKey = `locks/chat_${chatId}`;
+    const existingLock = await bucket.get(chatLockKey);
+    if (existingLock) {
+      const lockData = await existingLock.json<{ timestamp: number }>();
+      // If lock is fresh (< 2 min), another request is still processing — skip
+      if (Date.now() - lockData.timestamp < 120_000) {
+        console.log(`[WEBHOOK] Chat ${chatId} already processing (locked ${Date.now() - lockData.timestamp}ms ago), skipping`);
+        return;
+      }
+    }
+    await bucket.put(chatLockKey, JSON.stringify({ timestamp: Date.now() }));
 
     // Initialize tools
     initializeTools();
@@ -209,6 +233,10 @@ async function processUpdate(
     ).catch((sendErr) => {
       console.error('[WEBHOOK] Failed to send error message:', sendErr);
     });
+  } finally {
+    // Release per-chat lock
+    const chatLockKey = `locks/chat_${chatId}`;
+    await bucket.delete(chatLockKey).catch(() => {});
   }
 }
 

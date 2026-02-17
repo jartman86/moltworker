@@ -14,6 +14,7 @@ export const TELEGRAM_MAX_LENGTH = 4096;
 export const MAX_HISTORY_MESSAGES = 20;
 export const MAX_CONTEXT_CHARS = 50_000;
 export const MAX_TOOL_ITERATIONS = 25;
+export const WALL_CLOCK_TIMEOUT_MS = 120_000; // 120s — paid Workers plan supports extended waitUntil
 export const PENDING_ACTION_TTL_MS = 600_000; // 10 minutes
 
 /** R2 key prefixes */

@@ -9,6 +9,10 @@
 	"observability": {
 		"enabled": true,
 	},
+	// Paid Workers plan: allow up to 30s CPU time for multi-step agent loops
+	"limits": {
+		"cpu_ms": 30000,
+	},
 	// Static assets for admin UI (built by vite)
 	"assets": {
 		"directory": "./dist/client",
