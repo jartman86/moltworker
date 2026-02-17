@@ -37,7 +37,7 @@ async function loadBotConfig(bucket: R2Bucket): Promise<BotConfig> {
   return { model: DEFAULT_MODEL, maxTokens: DEFAULT_MAX_TOKENS };
 }
 
-const RETRY_DELAYS = [2000, 5000, 15000]; // ms — 3 retries with increasing backoff
+const RETRY_DELAYS = [1000, 3000, 8000]; // ms — 3 retries, must fit within CF Workers 30s timeout
 
 async function fetchWithRetry(apiKey: string, body: Record<string, unknown>): Promise<Response> {
   const requestBody = JSON.stringify(body);
