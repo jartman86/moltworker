@@ -37,6 +37,46 @@ async function loadBotConfig(bucket: R2Bucket): Promise<BotConfig> {
   return { model: DEFAULT_MODEL, maxTokens: DEFAULT_MAX_TOKENS };
 }
 
+const RETRY_DELAYS = [2000, 5000, 15000]; // ms — 3 retries with increasing backoff
+
+async function fetchWithRetry(apiKey: string, body: Record<string, unknown>): Promise<Response> {
+  const requestBody = JSON.stringify(body);
+
+  for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: requestBody,
+    });
+
+    if (response.status === 429 && attempt < RETRY_DELAYS.length) {
+      const delay = RETRY_DELAYS[attempt];
+      console.log(`[CLAUDE API] Rate limited (attempt ${attempt + 1}/${RETRY_DELAYS.length + 1}), retrying in ${delay}ms`);
+      await new Promise((r) => setTimeout(r, delay));
+      continue;
+    }
+
+    if (!response.ok) {
+      if (response.status === 429) {
+        throw new Error('Rate limited by Claude API after retries. Please wait a moment and try again.');
+      }
+      if (response.status === 401) {
+        throw new Error('Invalid Anthropic API key. Check your ANTHROPIC_API_KEY configuration.');
+      }
+      const errorBody = await response.text();
+      throw new Error(`Claude API error (${response.status}): ${errorBody}`);
+    }
+
+    return response;
+  }
+
+  throw new Error('Unreachable');
+}
+
 export async function callClaude(
   env: MoltbotEnv,
   systemPrompt: string,
@@ -76,32 +116,15 @@ export async function callClaude(
       body.tools = options.tools;
     }
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify(body),
-    });
-
-    if (!response.ok) {
-      if (response.status === 429) {
-        throw new Error('Rate limited by Claude API. Please wait a moment and try again.');
-      }
-      if (response.status === 401) {
-        throw new Error('Invalid Anthropic API key. Check your ANTHROPIC_API_KEY configuration.');
-      }
-      const errorBody = await response.text();
-      throw new Error(`Claude API error (${response.status}): ${errorBody}`);
-    }
+    const response = await fetchWithRetry(env.ANTHROPIC_API_KEY, body);
 
     const data: ClaudeResponse = await response.json();
 
     if (data.error) {
       throw new Error(`Claude API error: ${data.error.message}`);
     }
+
+    console.log(`[CLAUDE API] iteration=${iterations} model=${model} stop_reason=${data.stop_reason} content_types=${data.content?.map(b => b.type).join(',') || 'none'} hasTools=${!!options?.tools} toolCount=${options?.tools?.length ?? 0}`);
 
     if (data.usage) {
       totalInputTokens += data.usage.input_tokens;

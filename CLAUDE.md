@@ -42,7 +42,7 @@ src/
 1. Telegram webhook hits `src/telegram/webhook.ts`
 2. Message is classified by `src/claude/router.ts` → Haiku or Sonnet
 3. System prompt is built from `config/soul.md` in R2 + any skill documents
-4. `callClaude()` runs a tool-use loop (up to 10 iterations)
+4. `callClaude()` runs a tool-use loop (up to 25 iterations) with retry on 429s
 5. Tools are registered in `src/tools/init.ts`, dispatched via `src/tools/registry.ts`
 6. Some tools require user confirmation (posting, publishing, deleting) — these queue a pending action
 
@@ -52,6 +52,19 @@ Big Earn's personality and instructions live in R2 at `config/soul.md`. Update v
 ```bash
 npx wrangler r2 object put moltbot-data/config/soul.md --file path/to/soul.md --remote
 ```
+
+## Self-Improvement
+
+Claude Code maintains a persistent memory at `~/.claude/projects/-Users-corey-moltworker/memory/MEMORY.md`. This file is loaded into every session's system prompt.
+
+**Autonomously update your memory as you work:**
+- When you make a mistake, record what went wrong and the fix so you never repeat it
+- When you discover a pattern, convention, or gotcha in this codebase, write it down
+- When the user corrects you or expresses a preference, save it immediately
+- When debugging reveals something non-obvious (like the R2 `--remote` flag, token economics, etc.), document it
+- Keep MEMORY.md concise (<200 lines) — move detailed notes to topic-specific files and link from MEMORY.md
+
+You don't need permission to update your memory. Just do it as part of your workflow.
 
 ## Conventions
 

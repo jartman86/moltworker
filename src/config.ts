@@ -3,7 +3,7 @@
  */
 
 export const DEFAULT_MODEL = 'claude-haiku-4-5-20251001';
-export const DEFAULT_MAX_TOKENS = 4096;
+export const DEFAULT_MAX_TOKENS = 8192;
 
 /** Model tiers for dynamic routing */
 export const MODELS = {
@@ -11,9 +11,9 @@ export const MODELS = {
   standard: 'claude-sonnet-4-5-20250929',
 } as const;
 export const TELEGRAM_MAX_LENGTH = 4096;
-export const MAX_HISTORY_MESSAGES = 50;
-export const MAX_CONTEXT_CHARS = 100_000;
-export const MAX_TOOL_ITERATIONS = 10;
+export const MAX_HISTORY_MESSAGES = 20;
+export const MAX_CONTEXT_CHARS = 50_000;
+export const MAX_TOOL_ITERATIONS = 25;
 export const PENDING_ACTION_TTL_MS = 600_000; // 10 minutes
 
 /** R2 key prefixes */

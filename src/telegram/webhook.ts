@@ -152,6 +152,8 @@ async function processUpdate(
     const toolCtx: ToolContext = { env, bucket, chatId };
     const tools = getToolDefinitions();
 
+    console.log(`[CLAUDE] model=${selectedModel} tools=${tools.length} systemPromptLen=${systemPrompt.length} historyMsgs=${contextMessages.length}`);
+
     // Call Claude with tool support
     const result = await callClaude(env, systemPrompt, contextMessages, {
       tools: tools.length > 0 ? tools : undefined,
@@ -162,20 +164,22 @@ async function processUpdate(
       model: selectedModel,
     });
 
-    // Log tool calls and model used
-    if (result.toolCalls.length > 0) {
-      const logKey = `${R2_KEYS.toolLogsPrefix}${chatId}/${Date.now()}.json`;
-      await bucket.put(logKey, JSON.stringify({
-        chatId,
-        timestamp: Date.now(),
-        userMessage: text,
-        model: selectedModel,
-        toolCalls: result.toolCalls,
-        inputTokens: result.inputTokens,
-        outputTokens: result.outputTokens,
-        iterations: result.iterations,
-      }));
-    }
+    console.log(`[CLAUDE] result: toolCalls=${result.toolCalls.length} iterations=${result.iterations} inputTokens=${result.inputTokens} outputTokens=${result.outputTokens}`);
+
+    // Log every request (not just tool calls) for debugging
+    const logKey = `${R2_KEYS.toolLogsPrefix}${chatId}/${Date.now()}.json`;
+    await bucket.put(logKey, JSON.stringify({
+      chatId,
+      timestamp: Date.now(),
+      userMessage: text,
+      model: selectedModel,
+      toolCount: tools.length,
+      systemPromptLength: systemPrompt.length,
+      toolCalls: result.toolCalls,
+      inputTokens: result.inputTokens,
+      outputTokens: result.outputTokens,
+      iterations: result.iterations,
+    }));
 
     // Save updated conversation
     conversation.messages.push(
