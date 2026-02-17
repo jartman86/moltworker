@@ -3,6 +3,7 @@
  */
 import { registerTool } from './registry';
 import { listSkills, loadSkill, saveSkill } from '../r2/skills';
+import { loadSoul, saveSoul } from '../r2/soul';
 import { saveSkillVersion } from '../r2/skill-versions';
 
 export function registerSkillTools(): void {
@@ -90,6 +91,46 @@ export function registerSkillTools(): void {
           ? `Skill "${name}" updated successfully. Previous version saved to history.`
           : `Skill "${name}" created successfully.`,
       };
+    },
+    { requiresConfirmation: true },
+  );
+
+  registerTool(
+    {
+      name: 'read_soul',
+      description:
+        'Read your soul.md — your core identity, personality, and instructions. This is the system prompt that defines who you are.',
+      input_schema: {
+        type: 'object',
+        properties: {},
+      },
+    },
+    async (_input, ctx) => {
+      const content = await loadSoul(ctx.bucket);
+      return { result: content };
+    },
+  );
+
+  registerTool(
+    {
+      name: 'update_soul',
+      description:
+        'Update your soul.md — your core identity and instructions. Use with care. The content should be in markdown format.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          content: {
+            type: 'string',
+            description: 'The full markdown content for soul.md',
+          },
+        },
+        required: ['content'],
+      },
+    },
+    async (input, ctx) => {
+      const content = input.content as string;
+      await saveSoul(ctx.bucket, content);
+      return { result: 'Soul updated successfully. Changes take effect on the next message.' };
     },
     { requiresConfirmation: true },
   );
