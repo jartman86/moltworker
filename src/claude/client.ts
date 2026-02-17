@@ -21,6 +21,8 @@ export interface CallClaudeOptions {
   tools?: ToolDefinition[];
   executeTools?: ToolExecuteCallback;
   onToolIteration?: () => Promise<void>;
+  /** Override the model for this request (e.g. from router) */
+  model?: string;
 }
 
 async function loadBotConfig(bucket: R2Bucket): Promise<BotConfig> {
@@ -46,7 +48,7 @@ export async function callClaude(
   }
 
   const botConfig = await loadBotConfig(env.MOLTBOT_BUCKET);
-  const model = env.ANTHROPIC_MODEL || botConfig.model || DEFAULT_MODEL;
+  const model = options?.model || env.ANTHROPIC_MODEL || botConfig.model || DEFAULT_MODEL;
   const maxTokens = env.ANTHROPIC_MAX_TOKENS
     ? parseInt(env.ANTHROPIC_MAX_TOKENS, 10)
     : botConfig.maxTokens || DEFAULT_MAX_TOKENS;

@@ -12,6 +12,7 @@ import {
 } from '../r2/conversations';
 import { callClaude } from '../claude/client';
 import { buildSystemPrompt } from '../claude/prompt';
+import { selectModel } from '../claude/router';
 import { DEFAULT_MODEL, R2_KEYS } from '../config';
 import { initializeTools, getToolDefinitions, executeTool } from '../tools';
 import type { ToolContext } from '../tools';
@@ -144,6 +145,9 @@ async function processUpdate(
     const contextMessages = getContextMessages(conversation.messages);
     contextMessages.push({ role: 'user', content: text });
 
+    // Select model based on message complexity
+    const selectedModel = selectModel(text);
+
     // Set up tool context
     const toolCtx: ToolContext = { env, bucket, chatId };
     const tools = getToolDefinitions();
@@ -155,15 +159,17 @@ async function processUpdate(
         ? (block: ToolUseBlock) => executeTool(block, toolCtx)
         : undefined,
       onToolIteration: () => telegram.sendChatAction(chatId),
+      model: selectedModel,
     });
 
-    // Log tool calls if any
+    // Log tool calls and model used
     if (result.toolCalls.length > 0) {
       const logKey = `${R2_KEYS.toolLogsPrefix}${chatId}/${Date.now()}.json`;
       await bucket.put(logKey, JSON.stringify({
         chatId,
         timestamp: Date.now(),
         userMessage: text,
+        model: selectedModel,
         toolCalls: result.toolCalls,
         inputTokens: result.inputTokens,
         outputTokens: result.outputTokens,

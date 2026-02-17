@@ -4,6 +4,12 @@
 
 export const DEFAULT_MODEL = 'claude-haiku-4-5-20251001';
 export const DEFAULT_MAX_TOKENS = 4096;
+
+/** Model tiers for dynamic routing */
+export const MODELS = {
+  light: 'claude-haiku-4-5-20251001',
+  standard: 'claude-sonnet-4-5-20250929',
+} as const;
 export const TELEGRAM_MAX_LENGTH = 4096;
 export const MAX_HISTORY_MESSAGES = 50;
 export const MAX_CONTEXT_CHARS = 100_000;

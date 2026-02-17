@@ -1,6 +1,7 @@
 export { callClaude } from './client';
 export type { CallClaudeOptions, ToolExecuteCallback } from './client';
 export { buildSystemPrompt } from './prompt';
+export { selectModel } from './router';
 export type {
   ClaudeMessage,
   ClaudeResponse,
