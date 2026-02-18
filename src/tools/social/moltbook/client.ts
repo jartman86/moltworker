@@ -60,7 +60,7 @@ export class MoltbookClient {
   }
 
   async createPost(submolt: string, title: string, content?: string, url?: string): Promise<unknown> {
-    const body: Record<string, string> = { submolt, title };
+    const body: Record<string, string> = { submolt_name: submolt, title };
     if (content) body.content = content;
     if (url) body.url = url;
     const result = await this.request<{
