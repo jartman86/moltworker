@@ -175,9 +175,15 @@ async function processUpdate(
     // Select model based on message complexity
     const selectedModel = selectModel(text);
 
-    // Set up tool context — only send tools relevant to the message to reduce tokens
+    // Set up tool context — send tools relevant to recent conversation, not just current message
     const toolCtx: ToolContext = { env, bucket, chatId };
-    const tools = getFilteredToolDefinitions(text);
+    // Build keyword context from the last few messages so follow-ups like "do it" still get the right tools
+    const recentTexts = contextMessages
+      .slice(-6)
+      .filter((m) => typeof m.content === 'string')
+      .map((m) => m.content as string)
+      .join(' ');
+    const tools = getFilteredToolDefinitions(recentTexts);
 
     console.log(`[CLAUDE] model=${selectedModel} tools=${tools.length} systemPromptLen=${systemPrompt.length} historyMsgs=${contextMessages.length}`);
 
