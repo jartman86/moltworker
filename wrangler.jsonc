@@ -9,7 +9,7 @@
 	"observability": {
 		"enabled": true,
 	},
-	// Paid Workers plan: allow up to 30s CPU time for multi-step agent loops
+	// Paid Workers plan (Standard): 30s CPU time, unlimited I/O wall clock
 	"limits": {
 		"cpu_ms": 30000,
 	},

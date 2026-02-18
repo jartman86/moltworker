@@ -14,7 +14,7 @@ import { callClaude } from '../claude/client';
 import { buildSystemPrompt } from '../claude/prompt';
 import { selectModel } from '../claude/router';
 import { DEFAULT_MODEL, R2_KEYS } from '../config';
-import { initializeTools, getToolDefinitions, executeTool } from '../tools';
+import { initializeTools, getFilteredToolDefinitions, executeTool } from '../tools';
 import type { ToolContext } from '../tools';
 import type { ToolUseBlock } from '../claude/types';
 import {
@@ -57,11 +57,13 @@ export async function handleTelegramWebhook(c: Context<AppEnv>): Promise<Respons
     return c.json({ error: 'Invalid JSON' }, 400);
   }
 
-  // Return 200 immediately, process in waitUntil
+  // Process in the main handler — Standard plan gives 30s CPU with unlimited I/O wall clock.
+  // This avoids the waitUntil timeout that was killing multi-step agent loops.
+  // Telegram may retry if we take too long, but our update_id dedup handles that.
   const telegram = new TelegramClient(env.TELEGRAM_BOT_TOKEN);
   const bucket = env.MOLTBOT_BUCKET;
 
-  c.executionCtx.waitUntil(processUpdate(update, telegram, bucket, env));
+  await processUpdate(update, telegram, bucket, env);
 
   return c.json({ ok: true });
 }
@@ -141,12 +143,13 @@ async function processUpdate(
     }
 
     // Per-chat concurrency lock — only one Claude call per chat at a time
+    // TTL is short (30s) because if waitUntil kills the process, the finally block
+    // never runs and the lock would otherwise block all subsequent messages.
     const chatLockKey = `locks/chat_${chatId}`;
     const existingLock = await bucket.get(chatLockKey);
     if (existingLock) {
       const lockData = await existingLock.json<{ timestamp: number }>();
-      // If lock is fresh (< 2 min), another request is still processing — skip
-      if (Date.now() - lockData.timestamp < 120_000) {
+      if (Date.now() - lockData.timestamp < 30_000) {
         console.log(`[WEBHOOK] Chat ${chatId} already processing (locked ${Date.now() - lockData.timestamp}ms ago), skipping`);
         return;
       }
@@ -172,9 +175,9 @@ async function processUpdate(
     // Select model based on message complexity
     const selectedModel = selectModel(text);
 
-    // Set up tool context
+    // Set up tool context — only send tools relevant to the message to reduce tokens
     const toolCtx: ToolContext = { env, bucket, chatId };
-    const tools = getToolDefinitions();
+    const tools = getFilteredToolDefinitions(text);
 
     console.log(`[CLAUDE] model=${selectedModel} tools=${tools.length} systemPromptLen=${systemPrompt.length} historyMsgs=${contextMessages.length}`);
 

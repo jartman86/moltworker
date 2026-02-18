@@ -112,6 +112,11 @@ export async function callClaude(
       break;
     }
 
+    // Pace API calls to avoid hitting tokens-per-minute rate limits
+    if (iterations > 0) {
+      await new Promise((r) => setTimeout(r, 3000));
+    }
+
     iterations++;
 
     const body: Record<string, unknown> = {
