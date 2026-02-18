@@ -65,20 +65,25 @@ export class MoltbookClient {
     if (url) body.url = url;
     const result = await this.request<{
       success: boolean;
-      verification_required?: boolean;
-      verification?: { code: string; challenge: string };
-      post?: { id: string };
+      post?: {
+        id: string;
+        verificationStatus?: string;
+        verification?: { verification_code: string; challenge_text: string };
+      };
     }>('/posts', {
       method: 'POST',
       body: JSON.stringify(body),
     });
 
-    if (result.verification_required && result.verification) {
-      const answer = solveChallenge(result.verification.challenge);
+    // Auto-verify if the API returned a challenge
+    const verification = result.post?.verification;
+    if (result.post?.verificationStatus === 'pending' && verification) {
+      const answer = solveChallenge(verification.challenge_text);
+      console.log(`[MOLTBOOK] Solving verification: challenge="${verification.challenge_text}" answer="${answer}"`);
       await this.request('/verify', {
         method: 'POST',
         body: JSON.stringify({
-          verification_code: result.verification.code,
+          verification_code: verification.verification_code,
           answer,
         }),
       });
@@ -92,19 +97,23 @@ export class MoltbookClient {
     if (parentId) body.parent_id = parentId;
     const result = await this.request<{
       success: boolean;
-      verification_required?: boolean;
-      verification?: { code: string; challenge: string };
+      comment?: {
+        verificationStatus?: string;
+        verification?: { verification_code: string; challenge_text: string };
+      };
     }>(`/posts/${postId}/comments`, {
       method: 'POST',
       body: JSON.stringify(body),
     });
 
-    if (result.verification_required && result.verification) {
-      const answer = solveChallenge(result.verification.challenge);
+    const verification = result.comment?.verification;
+    if (result.comment?.verificationStatus === 'pending' && verification) {
+      const answer = solveChallenge(verification.challenge_text);
+      console.log(`[MOLTBOOK] Solving verification: challenge="${verification.challenge_text}" answer="${answer}"`);
       await this.request('/verify', {
         method: 'POST',
         body: JSON.stringify({
-          verification_code: result.verification.code,
+          verification_code: verification.verification_code,
           answer,
         }),
       });
@@ -172,14 +181,13 @@ export class MoltbookClient {
 
 /**
  * Solve Moltbook's verification math challenges.
- * Challenges describe a velocity + acceleration problem in obfuscated text.
- * Extract the two numbers and add them.
+ * Challenges are obfuscated text describing a math problem (add, multiply, subtract, etc.).
+ * Extract the numbers and detect the operation from keywords.
  */
 function solveChallenge(challenge: string): string {
   // Normalize: strip non-alphanumeric except spaces, periods, commas
   const clean = challenge.replace(/[^a-zA-Z0-9\s.,]/g, '').replace(/\s+/g, ' ').toLowerCase();
 
-  // Extract all numbers (written or digit) from the challenge
   const wordToNum: Record<string, number> = {
     zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7,
     eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13,
@@ -198,12 +206,11 @@ function solveChallenge(challenge: string): string {
     const w = words[i];
     if (wordToNum[w] !== undefined) {
       const val = wordToNum[w];
-      // Check if next word is also a number (compound like "thirty two")
       if (i + 1 < words.length && wordToNum[words[i + 1]] !== undefined) {
         const next = wordToNum[words[i + 1]];
         if (val >= 20 && next < 10) {
           wordNumbers.push(val + next);
-          i++; // skip next
+          i++;
           continue;
         }
       }
@@ -212,18 +219,31 @@ function solveChallenge(challenge: string): string {
   }
 
   const numbers = digitNumbers.length >= 2 ? digitNumbers : wordNumbers;
-
-  if (numbers.length >= 2) {
-    // velocity + acceleration = new velocity
-    const result = numbers[0] + numbers[1];
-    return result.toFixed(2);
+  if (numbers.length < 2) {
+    const all = [...digitNumbers, ...wordNumbers];
+    if (all.length >= 2) {
+      numbers.push(...all.slice(0, 2));
+    }
   }
 
-  // Fallback: just return the sum of whatever we found
-  const all = [...digitNumbers, ...wordNumbers];
-  if (all.length >= 2) {
-    return (all[0] + all[1]).toFixed(2);
+  if (numbers.length < 2) return '0.00';
+
+  // Detect operation from keywords in the challenge text
+  const isMultiply = /multipli|times|product|x\s/.test(clean);
+  const isSubtract = /subtract|minus|lose|decreas|reduc|slow/.test(clean);
+  const isDivide = /divid|split|half|ratio/.test(clean);
+
+  let result: number;
+  if (isMultiply) {
+    result = numbers[0] * numbers[1];
+  } else if (isSubtract) {
+    result = numbers[0] - numbers[1];
+  } else if (isDivide) {
+    result = numbers[1] !== 0 ? numbers[0] / numbers[1] : 0;
+  } else {
+    // Default: addition
+    result = numbers[0] + numbers[1];
   }
 
-  return '0.00';
+  return result.toFixed(2);
 }
