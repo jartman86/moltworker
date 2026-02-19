@@ -17,6 +17,9 @@ export const MAX_TOOL_ITERATIONS = 25;
 export const WALL_CLOCK_TIMEOUT_MS = 120_000; // 120s — paid Workers plan supports extended waitUntil
 export const PENDING_ACTION_TTL_MS = 600_000; // 10 minutes
 
+/** Owner's Telegram chat ID for cron task notifications */
+export const OWNER_CHAT_ID = 7535291812;
+
 /** R2 key prefixes */
 export const R2_KEYS = {
   soul: 'config/soul.md',
@@ -29,6 +32,7 @@ export const R2_KEYS = {
   pendingActionsPrefix: 'pending-actions/',
   skillVersionsPrefix: 'skill-versions/',
   mediaPrefix: 'media/',
+  cronLogsPrefix: 'tool-logs/cron/',
 } as const;
 
 /** Default Soul.md content for new installations */

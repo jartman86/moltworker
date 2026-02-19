@@ -38,6 +38,14 @@
 			"tag": "v2",
 		},
 	],
+	// Cron triggers for autonomous scheduled tasks (times in UTC)
+	// 0 * * * *    = every hour (Moltbook DMs, feed scan)
+	// 0 14 * * *   = 9 AM ET (morning research + brief)
+	// 0 2 * * *    = 9 PM ET (evening content + review)
+	// 0 11 * * 1   = Monday 6 AM ET (weekly strategy)
+	"triggers": {
+		"crons": ["0 * * * *", "0 14 * * *", "0 2 * * *", "0 11 * * 1"]
+	},
 	// R2 bucket for persistent storage (moltbot data, conversations, etc.)
 	"r2_buckets": [
 		{

@@ -20,6 +20,7 @@ import type { AppEnv, MoltbotEnv } from './types';
 import { createAccessMiddleware } from './auth';
 import { publicRoutes, api, adminUi } from './routes';
 import { redactSensitiveParams } from './utils/logging';
+import { runScheduledTask } from './cron';
 import configErrorHtml from './assets/config-error.html';
 
 /**
@@ -135,4 +136,7 @@ app.all('*', (c) => {
 
 export default {
   fetch: app.fetch,
+  async scheduled(event: ScheduledEvent, env: MoltbotEnv, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(runScheduledTask(event.cron, env));
+  },
 };
