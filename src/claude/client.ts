@@ -23,6 +23,8 @@ export interface CallClaudeOptions {
   onToolIteration?: () => Promise<void>;
   /** Override the model for this request (e.g. from router) */
   model?: string;
+  /** Custom retry delays for rate limits (default: [2000, 5000, 15000]) — use longer delays for background/cron tasks */
+  retryDelays?: number[];
 }
 
 async function loadBotConfig(bucket: R2Bucket): Promise<BotConfig> {
@@ -37,12 +39,13 @@ async function loadBotConfig(bucket: R2Bucket): Promise<BotConfig> {
   return { model: DEFAULT_MODEL, maxTokens: DEFAULT_MAX_TOKENS };
 }
 
-const RETRY_DELAYS = [2000, 5000, 15000]; // ms — 3 retries with longer backoff to let rate limit window pass
+const DEFAULT_RETRY_DELAYS = [2000, 5000, 15000]; // ms — interactive: 22s total retry window
+export const CRON_RETRY_DELAYS = [5000, 15000, 30000, 60000]; // ms — background: 110s total, outlasts 60s rate limit window
 
-async function fetchWithRetry(apiKey: string, body: Record<string, unknown>): Promise<Response> {
+async function fetchWithRetry(apiKey: string, body: Record<string, unknown>, retryDelays: number[] = DEFAULT_RETRY_DELAYS): Promise<Response> {
   const requestBody = JSON.stringify(body);
 
-  for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
+  for (let attempt = 0; attempt <= retryDelays.length; attempt++) {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -53,9 +56,9 @@ async function fetchWithRetry(apiKey: string, body: Record<string, unknown>): Pr
       body: requestBody,
     });
 
-    if (response.status === 429 && attempt < RETRY_DELAYS.length) {
-      const delay = RETRY_DELAYS[attempt];
-      console.log(`[CLAUDE API] Rate limited (attempt ${attempt + 1}/${RETRY_DELAYS.length + 1}), retrying in ${delay}ms`);
+    if (response.status === 429 && attempt < retryDelays.length) {
+      const delay = retryDelays[attempt];
+      console.log(`[CLAUDE API] Rate limited (attempt ${attempt + 1}/${retryDelays.length + 1}), retrying in ${delay}ms`);
       await new Promise((r) => setTimeout(r, delay));
       continue;
     }
@@ -130,7 +133,7 @@ export async function callClaude(
       body.tools = options.tools;
     }
 
-    const response = await fetchWithRetry(env.ANTHROPIC_API_KEY, body);
+    const response = await fetchWithRetry(env.ANTHROPIC_API_KEY, body, options?.retryDelays);
 
     const data: ClaudeResponse = await response.json();
 

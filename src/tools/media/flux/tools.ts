@@ -10,22 +10,22 @@ export function registerFluxTools(): void {
     {
       name: 'generate_image',
       description:
-        'Generate a photorealistic image using Flux Pro 1.1. Best for photography-style images, portraits, landscapes, product shots. Cost: ~$0.04-0.06 per image. Takes 10-30 seconds.',
+        'Generate a photorealistic image using Flux Pro 1.1. Best for photography, portraits, landscapes. ~$0.04/image, 10-30s.',
       input_schema: {
         type: 'object',
         properties: {
           prompt: {
             type: 'string',
             description:
-              'Detailed image description. Include subject, setting, lighting, camera/lens details, and style. Example: "Professional headshot of a confident woman in a modern office, natural window light, shallow depth of field, 85mm f/1.4, editorial photography"',
+              'Detailed image description including subject, setting, lighting, and style.',
           },
           width: {
             type: 'number',
-            description: 'Image width in pixels (default 1024). Common: 1024x1024 (square), 1024x576 (landscape), 768x1024 (portrait)',
+            description: 'Image width in pixels (default 1024).',
           },
           height: {
             type: 'number',
-            description: 'Image height in pixels (default 1024)',
+            description: 'Image height in pixels (default 1024).',
           },
         },
         required: ['prompt'],

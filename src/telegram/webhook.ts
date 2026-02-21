@@ -179,7 +179,7 @@ async function processUpdate(
     const toolCtx: ToolContext = { env, bucket, chatId };
     // Build keyword context from the last few messages so follow-ups like "do it" still get the right tools
     const recentTexts = contextMessages
-      .slice(-6)
+      .slice(-3)
       .filter((m) => typeof m.content === 'string')
       .map((m) => m.content as string)
       .join(' ');

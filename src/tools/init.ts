@@ -15,6 +15,7 @@ import { registerIdeogramTools } from './media/ideogram/tools';
 import { registerTogetherTools } from './media/together/tools';
 import { registerMediaSendTools } from './media/telegram-send';
 import { registerMoltbookTools } from './social/moltbook/tools';
+import { registerPolymarketTools } from './trading/polymarket/tools';
 
 let initialized = false;
 
@@ -35,4 +36,5 @@ export function initializeTools(): void {
   registerTogetherTools();
   registerMediaSendTools();
   registerMoltbookTools();
+  registerPolymarketTools();
 }

@@ -10,28 +10,28 @@ export function registerIdeogramTools(): void {
     {
       name: 'generate_graphic',
       description:
-        'Generate a graphic with text overlays using Ideogram. Best for YouTube thumbnails, quote cards, event announcements, social media headers — any image that needs readable text rendered into it. Cost: ~$0.04-0.08 per image.',
+        'Generate a graphic with text overlays using Ideogram. Best for thumbnails, quote cards, headers. ~$0.04-0.08/image.',
       input_schema: {
         type: 'object',
         properties: {
           prompt: {
             type: 'string',
             description:
-              'Image description with exact text in quotes. Example: "Bold YouTube thumbnail with large white text reading \'TOP 10 TIPS\' over a dramatic sunset background, cinematic style"',
+              'Image description with any desired text in quotes.',
           },
           aspect_ratio: {
             type: 'string',
-            description: 'Aspect ratio. Options: ASPECT_1_1 (default, Instagram), ASPECT_16_9 (YouTube/Twitter), ASPECT_9_16 (Stories/TikTok), ASPECT_4_3, ASPECT_3_4',
+            description: 'Aspect ratio (default ASPECT_1_1).',
             enum: ['ASPECT_1_1', 'ASPECT_16_9', 'ASPECT_9_16', 'ASPECT_4_3', 'ASPECT_3_4'],
           },
           style_type: {
             type: 'string',
-            description: 'Style type. "DESIGN" for clean graphics, "REALISTIC" for photo-composites with text, "AUTO" (default) to let Ideogram decide',
+            description: 'Style: "DESIGN", "REALISTIC", or "AUTO" (default).',
             enum: ['AUTO', 'DESIGN', 'REALISTIC'],
           },
           magic_prompt: {
             type: 'string',
-            description: 'Magic prompt enhancement. "ON" for Ideogram to enhance your prompt (default), "OFF" for exact control',
+            description: 'Prompt enhancement: "ON" (default), "OFF", or "AUTO".',
             enum: ['AUTO', 'ON', 'OFF'],
           },
         },

@@ -9,7 +9,7 @@
 import type { MoltbotEnv } from '../types'
 import type { ToolContext } from '../tools'
 import type { ToolUseBlock } from '../claude/types'
-import { callClaude } from '../claude/client'
+import { callClaude, CRON_RETRY_DELAYS } from '../claude/client'
 import { buildSystemPrompt } from '../claude/prompt'
 import { initializeTools, getFilteredToolDefinitions, executeTool } from '../tools'
 import { TelegramClient } from '../telegram/api'
@@ -119,6 +119,7 @@ export async function runScheduledTask(cron: string, env: MoltbotEnv): Promise<v
         ? (block: ToolUseBlock) => executeTool(block, toolCtx)
         : undefined,
       model: MODELS.standard,
+      retryDelays: CRON_RETRY_DELAYS,
     })
 
     const durationMs = Date.now() - startTime

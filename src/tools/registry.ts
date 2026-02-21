@@ -36,6 +36,7 @@ const TOOL_CATEGORIES: Record<string, string[]> = {
   instagram: ['get_instagram_profile', 'get_instagram_media', 'get_instagram_insights', 'create_instagram_post', 'reply_to_instagram_comment'],
   linkedin: ['get_linkedin_profile', 'get_linkedin_analytics', 'create_linkedin_post', 'delete_linkedin_post'],
   moltbook: ['moltbook_get_feed', 'moltbook_get_posts', 'moltbook_create_post', 'moltbook_comment', 'moltbook_upvote', 'moltbook_search', 'moltbook_check_dms', 'moltbook_get_post', 'moltbook_list_submolts'],
+  polymarket: ['polymarket_scan_markets', 'polymarket_search_markets', 'polymarket_get_market', 'polymarket_get_positions', 'polymarket_get_portfolio', 'polymarket_get_balance', 'polymarket_get_orders'],
 };
 
 /** Keyword → categories mapping */
@@ -48,6 +49,7 @@ const CATEGORY_KEYWORDS: Record<string, string[]> = {
   media: ['image', 'photo', 'picture', 'graphic', 'generate', 'design', 'video', 'thumbnail'],
   skills: ['skill', 'soul', 'personality', 'identity'],
   learning: ['feedback', 'improve', 'learn'],
+  polymarket: ['polymarket', 'prediction', 'poly', 'bet', 'wager', 'odds', 'trading', 'market scan'],
 };
 
 /**

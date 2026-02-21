@@ -10,26 +10,26 @@ export function registerTogetherTools(): void {
     {
       name: 'generate_image_fast',
       description:
-        'Generate an image quickly and cheaply using Flux Schnell via Together.ai. Cost: ~$0.003 per image (20x cheaper than Flux Pro). Good for drafts, iterations, social posts, and any case where speed and cost matter more than maximum quality. Use generate_image (Flux Pro) only when photorealistic perfection is needed.',
+        'Generate an image fast and cheaply using Flux Schnell (~$0.003/image). Good for drafts and iterations.',
       input_schema: {
         type: 'object',
         properties: {
           prompt: {
             type: 'string',
             description:
-              'Image description. Same prompt style as generate_image works here. Example: "Golden retriever playing in autumn leaves, warm sunlight, shallow depth of field, 85mm photography"',
+              'Detailed image description.',
           },
           width: {
             type: 'number',
-            description: 'Image width in pixels (default 1024). Common: 1024x1024 (square), 1024x576 (landscape), 768x1024 (portrait)',
+            description: 'Image width in pixels (default 1024).',
           },
           height: {
             type: 'number',
-            description: 'Image height in pixels (default 1024)',
+            description: 'Image height in pixels (default 1024).',
           },
           steps: {
             type: 'number',
-            description: 'Number of inference steps (default 4). Higher = better quality but slower. Range: 1-8.',
+            description: 'Inference steps 1-8 (default 4).',
           },
         },
         required: ['prompt'],

@@ -10,27 +10,27 @@ export function registerKlingTools(): void {
     {
       name: 'generate_video',
       description:
-        'Generate a cinematic video clip using Kling 2.5 Turbo via fal.ai. Best for motion content: drone shots, cinematic sequences, product reveals, social media video clips. Cost: ~$0.35 per 5s clip. Takes 1-5 minutes.',
+        'Generate a cinematic video clip using Kling 2.5 Turbo. ~$0.35/5s clip, 1-5 min.',
       input_schema: {
         type: 'object',
         properties: {
           prompt: {
             type: 'string',
             description:
-              'Detailed video description. Structure: [Camera movement] + [Subject] + [Environment] + [Lighting/mood] + [Style]. Example: "Slow dolly in on a steaming cup of coffee on a wooden table, golden hour sunlight streaming through window, warm cinematic color grading, shallow depth of field"',
+              'Detailed video description with camera movement, subject, environment, and mood.',
           },
           negative_prompt: {
             type: 'string',
-            description: 'What to avoid. Default recommended: "blur, distort, and low quality"',
+            description: 'What to avoid (default: "blur, distort, and low quality").',
           },
           duration: {
             type: 'string',
-            description: 'Video duration: "5" for 5-second punchy clips, "10" for longer cinematic sequences',
+            description: 'Video duration: "5" or "10" seconds.',
             enum: ['5', '10'],
           },
           aspect_ratio: {
             type: 'string',
-            description: 'Aspect ratio: "16:9" for YouTube/landscape, "9:16" for TikTok/Reels/Shorts, "1:1" for Instagram',
+            description: 'Aspect ratio: "16:9", "9:16", or "1:1".',
             enum: ['16:9', '9:16', '1:1'],
           },
         },
