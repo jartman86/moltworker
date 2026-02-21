@@ -68,4 +68,11 @@
 	// - TELEGRAM_ALLOWED_USERS: Comma-separated Telegram user IDs
 	// - ANTHROPIC_MODEL: Override default model (claude-haiku-4-5-20251001)
 	// - ANTHROPIC_MAX_TOKENS: Override default max tokens (4096)
+	//
+	// Polymarket (prediction market trading):
+	// - POLYMARKET_PRIVATE_KEY: Polygon wallet private key (0x...)
+	// - POLYMARKET_WALLET_ADDRESS: Polygon wallet address (0x...)
+	// - POLYMARKET_API_KEY: CLOB API key (derived via py-clob-client)
+	// - POLYMARKET_API_SECRET: CLOB API secret
+	// - POLYMARKET_API_PASSPHRASE: CLOB API passphrase
 }

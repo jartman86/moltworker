@@ -45,6 +45,12 @@ export interface MoltbotEnv {
   TOGETHER_API_KEY?: string;
   // Moltbook (social network for AI agents)
   MOLTBOOK_API_KEY?: string;
+  // Polymarket (prediction market trading)
+  POLYMARKET_PRIVATE_KEY?: string;
+  POLYMARKET_WALLET_ADDRESS?: string;
+  POLYMARKET_API_KEY?: string;
+  POLYMARKET_API_SECRET?: string;
+  POLYMARKET_API_PASSPHRASE?: string;
   // Worker public URL (for media serving)
   WORKER_PUBLIC_URL?: string;
   // Dev/test mode
